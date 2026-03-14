@@ -1,2 +1,17 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "timepunch"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi[standard]",
+    "sqlalchemy",
+    "uvicorn",
+    "email-validator",   # required for Pydantic's EmailStr
+]
+
 [tool.fastapi]
 entrypoint = "backend.main:app"

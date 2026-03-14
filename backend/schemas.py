@@ -1,0 +1,46 @@
+from pydantic import BaseModel
+from datetime import datetime
+from typing import Optional
+
+
+# ── User schemas ──────────────────────────────────────────────────────────────
+
+class UserCreate(BaseModel):
+    name: str
+    username: str
+    password: str
+    is_admin: bool = False
+
+
+class UserOut(BaseModel):
+    id: int
+    name: str
+    username: str
+    is_admin: bool
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── TimeEntry schemas ─────────────────────────────────────────────────────────
+
+class TimeEntryOut(BaseModel):
+    id: int
+    user_id: int
+    punch_in: datetime
+    punch_out: Optional[datetime]
+    duration_minutes: Optional[int]
+    note: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
+class PunchRequest(BaseModel):
+    note: Optional[str] = None
+
+
+class PunchResponse(BaseModel):
+    action: str  # "punched_in" | "punched_out"
+    user_id: int
+    entry: TimeEntryOut

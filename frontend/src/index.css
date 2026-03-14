@@ -1,0 +1,20 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;600;700&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+input:focus {
+  border-color: #F5620F !important;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
