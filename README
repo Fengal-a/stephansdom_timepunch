@@ -1,0 +1,5 @@
+Clock Punching System
+
+start frontend: npm run dev -- --host 0.0.0.0
+
+start backend: fastapi dev
