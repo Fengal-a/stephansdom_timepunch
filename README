@@ -142,6 +142,15 @@ VITE_API_URL  (frontend/.env.local — only needed for local dev)
   Leave empty in all cases. The nginx proxy handles API routing in production,
   and the Vite dev proxy handles it locally.
 
+OFFICE_NETWORKS
+  Comma-separated list of subnets employees are allowed to connect from.
+  Admins bypass this check and can always log in from anywhere.
+  Leave empty to disable (good for local dev and testing).
+  Example: 192.168.1.0/24
+  To find your office subnet: check your router's admin page, or on the server run:
+    ip route | grep -v default
+  Multiple subnets: 192.168.1.0/24,10.0.0.0/8
+
 Future: email password reset (not yet implemented)
   When added, you will also need:
   RESEND_API_KEY   — API key from resend.com (free tier: 3000 emails/month)

@@ -320,6 +320,14 @@ export default function Admin({ user, onLogout }) {
     fetchAll();
   }
 
+  async function handleDeleteUser(userId, userName) {
+    if (!confirm(`Mitarbeiter "${userName}" und alle zugehörigen Einträge wirklich löschen?`)) return;
+    await fetch(`${API}/admin/users/${userId}`, {
+      method: "DELETE", headers: authHeaders(),
+    });
+    fetchAll();
+  }
+
   function handleTouchStart(e) {
     touchStartX.current = e.touches[0].clientX;
   }
@@ -516,7 +524,7 @@ export default function Admin({ user, onLogout }) {
                                 </div>
                               ))
                             )}
-                            <div style={{ display: "flex", gap: "8px" }}>
+                            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                               <button
                                 style={s.manualPunchBtn}
                                 onClick={() => handleAdminPunch(u.id)}
@@ -528,6 +536,12 @@ export default function Admin({ user, onLogout }) {
                                 onClick={() => setResetUser(u)}
                               >
                                 Passwort zurücksetzen
+                              </button>
+                              <button
+                                style={s.deleteUserBtn}
+                                onClick={() => handleDeleteUser(u.id, u.name)}
+                              >
+                                Mitarbeiter löschen
                               </button>
                             </div>
                           </div>
@@ -729,6 +743,13 @@ const s = {
     border: `1px solid rgba(255,80,80,0.2)`, borderRadius: "3px",
     padding: "4px 10px", fontSize: "10px", color: "#ff5050",
     cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.06em",
+  },
+  deleteUserBtn: {
+    margin: "4px 0 0", background: "none",
+    border: `1px solid rgba(255,80,80,0.3)`, borderRadius: "3px",
+    padding: "8px 14px", fontSize: "11px", color: "#ff5050",
+    cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.06em",
+    alignSelf: "flex-start",
   },
   manualPunchBtn: {
     margin: "4px 0 0", background: "none",
