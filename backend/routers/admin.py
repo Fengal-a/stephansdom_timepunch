@@ -1,13 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List
 import bcrypt
+import shutil
+import csv
+import io
 
 from ..database import get_db
 from ..models import User, TimeEntry
 from ..schemas import UserOut, TimeEntryOut, UserCreate
 from .auth import require_admin, get_current_user
+
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -42,6 +50,24 @@ def create_user(
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.put("/users/{user_id}/password")
+def reset_user_password(
+    user_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    new_password = payload.get("password", "").strip()
+    if len(new_password) < 4:
+        raise HTTPException(status_code=400, detail="Passwort muss mindestens 4 Zeichen haben")
+    user.password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    db.commit()
+    return {"ok": True}
 
 
 @router.delete("/users/{user_id}")
@@ -146,3 +172,104 @@ def admin_punch(
         open_entry.duration_minutes = duration
         db.commit()
         return {"action": "punched_out", "duration_minutes": duration}
+
+
+# ── Monthly CSV export for a single employee ─────────────────────────────────
+
+@router.get("/export/monthly")
+def export_monthly(
+    user_id: int = Query(...),
+    year:    int = Query(...),
+    month:   int = Query(...),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Build UTC window for the requested month
+    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    if month == 12:
+        end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+
+    entries = (
+        db.query(TimeEntry)
+        .filter(
+            TimeEntry.user_id == user_id,
+            TimeEntry.punch_in >= start,
+            TimeEntry.punch_in < end,
+        )
+        .order_by(TimeEntry.punch_in)
+        .all()
+    )
+
+    def fmt_dt(dt):
+        if not dt:
+            return ""
+        return dt.strftime("%d.%m.%Y %H:%M")
+
+    def fmt_dur(mins):
+        if mins is None:
+            return ""
+        h, m = divmod(mins, 60)
+        return f"{h}h {m:02d}min"
+
+    total_minutes = sum(e.duration_minutes or 0 for e in entries)
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";")
+
+    writer.writerow(["Mitarbeiter", user.name])
+    writer.writerow(["Zeitraum", f"{month:02d}/{year}"])
+    writer.writerow([])
+    writer.writerow(["Datum", "Einstempeln", "Ausstempeln", "Dauer", "Notiz"])
+
+    for e in entries:
+        writer.writerow([
+            e.punch_in.strftime("%d.%m.%Y") if e.punch_in else "",
+            fmt_dt(e.punch_in),
+            fmt_dt(e.punch_out) if e.punch_out else "läuft",
+            fmt_dur(e.duration_minutes),
+            e.note or "",
+        ])
+
+    writer.writerow([])
+    writer.writerow(["Gesamt", "", "", fmt_dur(total_minutes), ""])
+
+    filename = f"timepunch_{user.username}_{year}-{month:02d}.csv"
+    output.seek(0)
+    content = "\uFEFF" + output.getvalue()  # BOM for Excel
+
+    return StreamingResponse(
+        iter([content.encode("utf-8")]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Dienstplan image ──────────────────────────────────────────────────────────
+
+@router.post("/dienstplan")
+async def upload_dienstplan(
+    file: UploadFile = File(...),
+    _: User = Depends(require_admin),
+):
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+    for old in UPLOAD_DIR.glob("dienstplan.*"):
+        old.unlink()
+    dest = UPLOAD_DIR / f"dienstplan.{ext}"
+    with open(dest, "wb") as out:
+        shutil.copyfileobj(file.file, out)
+    return {"ok": True}
+
+
+@router.get("/dienstplan/image")
+async def get_dienstplan_image(
+    _: User = Depends(get_current_user),
+):
+    for f in UPLOAD_DIR.glob("dienstplan.*"):
+        return FileResponse(f)
+    raise HTTPException(status_code=404, detail="No image uploaded yet")

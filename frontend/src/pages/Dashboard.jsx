@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import Dienstplan from "./Dienstplan";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
@@ -39,6 +40,33 @@ export default function Dashboard({ user, onLogout }) {
   // Live clock while clocked in
   const [elapsed, setElapsed]     = useState("");
 
+  // Message compose
+  const [showCompose, setShowCompose] = useState(false);
+  const [msgBody,     setMsgBody]     = useState("");
+  const [msgSending,  setMsgSending]  = useState(false);
+  const [msgSent,     setMsgSent]     = useState(false);
+
+  async function sendMessage() {
+    if (!msgBody.trim()) return;
+    setMsgSending(true);
+    try {
+      await fetch(`${API}/messages`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ body: msgBody.trim() }),
+      });
+      setMsgSent(true);
+      setMsgBody("");
+    } catch {}
+    setMsgSending(false);
+  }
+
+  function openCompose() { setMsgBody(""); setMsgSent(false); setShowCompose(true); }
+
+  // Swipe navigation
+  const [page, setPage]           = useState("dashboard"); // "dashboard" | "dienstplan"
+  const touchStartX               = useRef(null);
+
   useEffect(() => {
     fetchStatus();
     fetchEntries();
@@ -77,10 +105,8 @@ export default function Dashboard({ user, onLogout }) {
     setLoading(false);
   }
 
-  // Pressing the big button
   function handlePunchPress() {
     if (status?.clocked_in) {
-      // Show note modal before punching out
       setNote("");
       setShowNote(true);
     } else {
@@ -105,105 +131,139 @@ export default function Dashboard({ user, onLogout }) {
     setPunching(false);
   }
 
-  const clockedIn = status?.clocked_in ?? false;
-  const todayMins = totalMinutesToday(entries);
+  function handleTouchStart(e) {
+    touchStartX.current = e.touches[0].clientX;
+  }
+
+  function handleTouchEnd(e) {
+    if (touchStartX.current === null) return;
+    const diff = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (diff < -60 && page === "dashboard") setPage("dienstplan");
+    if (diff > 60  && page === "dienstplan") setPage("dashboard");
+  }
+
+  const clockedIn    = status?.clocked_in ?? false;
+  const todayMins    = totalMinutesToday(entries);
+  const slideOffset  = page === "dienstplan" ? "-50%" : "0%";
 
   return (
-    <div style={s.root}>
-      <div style={s.bg} aria-hidden="true" />
+    <div
+      style={s.slideViewport}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      <div style={{ ...s.slideTrack, transform: `translateX(${slideOffset})` }}>
 
-      {/* Header */}
-      <header style={s.header}>
-        <div style={s.brand}>
-          <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
-            <rect x="3" y="3" width="10" height="10" fill="#F5620F" />
-            <rect x="15" y="3" width="10" height="10" fill="#F5620F" opacity=".4" />
-            <rect x="3" y="15" width="10" height="10" fill="#F5620F" opacity=".4" />
-            <rect x="15" y="15" width="10" height="10" fill="#F5620F" />
-          </svg>
-          <span style={s.brandText}>TIMEPUNCH</span>
-        </div>
-        <div style={s.headerRight}>
-          <span style={s.userName}>{user.name}</span>
-          <button style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
-        </div>
-      </header>
+        {/* ── Dashboard panel ── */}
+        <div style={s.slidePanel}>
+          <div style={s.root}>
+            <div style={s.bg} aria-hidden="true" />
 
-      {/* Main content */}
-      <main style={s.main}>
-
-        {/* Status pill */}
-        <div style={{ ...s.pill, ...(clockedIn ? s.pillActive : s.pillInactive) }}>
-          <span style={{ ...s.pillDot, background: clockedIn ? "#22c55e" : "#6B6B6B" }} />
-          {clockedIn ? "Eingestempelt" : "Ausgestempelt"}
-        </div>
-
-        {/* The big button */}
-        <button
-          style={{
-            ...s.bigBtn,
-            ...(clockedIn ? s.bigBtnOut : s.bigBtnIn),
-            ...(punching ? s.bigBtnDisabled : {}),
-          }}
-          onClick={handlePunchPress}
-          disabled={punching || loading}
-        >
-          {punching ? (
-            <span style={s.spinner} />
-          ) : clockedIn ? (
-            <>
-              <span style={s.bigBtnIcon}>■</span>
-              <span style={s.bigBtnLabel}>AUSSTEMPELN</span>
-            </>
-          ) : (
-            <>
-              <span style={s.bigBtnIcon}>▶</span>
-              <span style={s.bigBtnLabel}>EINSTEMPELN</span>
-            </>
-          )}
-        </button>
-
-        {/* Stats row */}
-        <div style={s.statsRow}>
-          <div style={s.stat}>
-            <span style={s.statLabel}>Eingestempelt um</span>
-            <span style={s.statValue}>
-              {clockedIn ? formatTime(status.punch_in) : "--:--"}
-            </span>
-          </div>
-          <div style={s.statDivider} />
-          <div style={s.stat}>
-            <span style={s.statLabel}>Heute gearbeitet</span>
-            <span style={s.statValue}>
-              {clockedIn && elapsed
-                ? elapsed
-                : todayMins > 0
-                ? formatDuration(todayMins)
-                : "--"}
-            </span>
-          </div>
-        </div>
-
-        {/* Today's entries log */}
-        {entries.length > 0 && (
-          <div style={s.log}>
-            <p style={s.logTitle}>HEUTIGE EINTRÄGE</p>
-            {entries.map(e => (
-              <div key={e.id} style={s.logRow}>
-                <span style={s.logTime}>
-                  {formatTime(e.punch_in)} → {e.punch_out ? formatTime(e.punch_out) : "läuft"}
-                </span>
-                <span style={s.logDur}>
-                  {e.duration_minutes != null ? formatDuration(e.duration_minutes) : ""}
-                </span>
-                {e.note && <span style={s.logNote}>"{e.note}"</span>}
+            {/* Header */}
+            <header style={s.header}>
+              <div style={s.brand}>
+                <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
+                  <rect x="3" y="3" width="10" height="10" fill="#F5620F" />
+                  <rect x="15" y="3" width="10" height="10" fill="#F5620F" opacity=".4" />
+                  <rect x="3" y="15" width="10" height="10" fill="#F5620F" opacity=".4" />
+                  <rect x="15" y="15" width="10" height="10" fill="#F5620F" />
+                </svg>
+                <span style={s.brandText}>TIMEPUNCH</span>
               </div>
-            ))}
-          </div>
-        )}
-      </main>
+              <div style={s.headerRight}>
+                <span style={s.userName}>{user.name}</span>
+                <button style={s.logoutBtn} onClick={() => setPage("dienstplan")}>Dienstplan</button>
+                <button style={s.logoutBtn} onClick={openCompose}>✉ Nachricht</button>
+                <button style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
+              </div>
+            </header>
 
-      {/* Note modal (slide up) */}
+            {/* Main content */}
+            <main style={s.main}>
+
+              {/* Status pill */}
+              <div style={{ ...s.pill, ...(clockedIn ? s.pillActive : s.pillInactive) }}>
+                <span style={{ ...s.pillDot, background: clockedIn ? "#22c55e" : "#6B6B6B" }} />
+                {clockedIn ? "Eingestempelt" : "Ausgestempelt"}
+              </div>
+
+              {/* The big button */}
+              <button
+                style={{
+                  ...s.bigBtn,
+                  ...(clockedIn ? s.bigBtnOut : s.bigBtnIn),
+                  ...(punching ? s.bigBtnDisabled : {}),
+                }}
+                onClick={handlePunchPress}
+                disabled={punching || loading}
+              >
+                {punching ? (
+                  <span style={s.spinner} />
+                ) : clockedIn ? (
+                  <>
+                    <span style={s.bigBtnIcon}>■</span>
+                    <span style={s.bigBtnLabel}>AUSSTEMPELN</span>
+                  </>
+                ) : (
+                  <>
+                    <span style={s.bigBtnIcon}>▶</span>
+                    <span style={s.bigBtnLabel}>EINSTEMPELN</span>
+                  </>
+                )}
+              </button>
+
+              {/* Stats row */}
+              <div style={s.statsRow}>
+                <div style={s.stat}>
+                  <span style={s.statLabel}>Eingestempelt um</span>
+                  <span style={s.statValue}>
+                    {clockedIn ? formatTime(status.punch_in) : "--:--"}
+                  </span>
+                </div>
+                <div style={s.statDivider} />
+                <div style={s.stat}>
+                  <span style={s.statLabel}>Heute gearbeitet</span>
+                  <span style={s.statValue}>
+                    {clockedIn && elapsed
+                      ? elapsed
+                      : todayMins > 0
+                      ? formatDuration(todayMins)
+                      : "--"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Today's entries log */}
+              {entries.length > 0 && (
+                <div style={s.log}>
+                  <p style={s.logTitle}>HEUTIGE EINTRÄGE</p>
+                  {entries.map(e => (
+                    <div key={e.id} style={s.logRow}>
+                      <span style={s.logTime}>
+                        {formatTime(e.punch_in)} → {e.punch_out ? formatTime(e.punch_out) : "läuft"}
+                      </span>
+                      <span style={s.logDur}>
+                        {e.duration_minutes != null ? formatDuration(e.duration_minutes) : ""}
+                      </span>
+                      {e.note && <span style={s.logNote}>"{e.note}"</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </main>
+
+          </div>
+        </div>
+
+        {/* ── Dienstplan panel ── */}
+        <div style={s.slidePanel}>
+          <Dienstplan onSwipeBack={() => setPage("dashboard")} />
+        </div>
+
+      </div>
+
+      {/* Note modal outside transformed slideTrack so position:fixed works correctly */}
       {showNote && (
         <div style={s.overlay} onClick={() => setShowNote(false)}>
           <div style={s.sheet} onClick={e => e.stopPropagation()}>
@@ -230,6 +290,48 @@ export default function Dashboard({ user, onLogout }) {
           </div>
         </div>
       )}
+
+      {/* Compose message modal */}
+      {showCompose && (
+        <div style={s.overlay} onClick={() => setShowCompose(false)}>
+          <div style={s.sheet} onClick={e => e.stopPropagation()}>
+            <div style={s.sheetHandle} />
+            <p style={s.sheetTitle}>Nachricht an Admin</p>
+            <p style={s.sheetSub}>Wird in den Admin-Posteingang gesendet</p>
+            {msgSent ? (
+              <>
+                <p style={{ margin: 0, fontSize: "14px", color: "#22c55e" }}>
+                  Nachricht erfolgreich gesendet.
+                </p>
+                <button style={s.confirmBtn} onClick={() => setShowCompose(false)}>
+                  Schließen
+                </button>
+              </>
+            ) : (
+              <>
+                <textarea
+                  style={s.textarea}
+                  placeholder="Ihre Nachricht..."
+                  value={msgBody}
+                  onChange={e => setMsgBody(e.target.value)}
+                  rows={4}
+                  autoFocus
+                />
+                <button
+                  style={{ ...s.confirmBtn, ...(msgSending ? s.bigBtnDisabled : {}) }}
+                  onClick={sendMessage}
+                  disabled={msgSending || !msgBody.trim()}
+                >
+                  {msgSending ? <span style={s.spinner} /> : "SENDEN"}
+                </button>
+                <button style={s.cancelBtn} onClick={() => setShowCompose(false)}>
+                  Abbrechen
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -245,6 +347,24 @@ const MUTED   = "#6B6B6B";
 const GREEN   = "#22c55e";
 
 const s = {
+  // Swipe slide container
+  slideViewport: {
+    width: "100vw",
+    overflow: "hidden",
+    position: "relative",
+  },
+  slideTrack: {
+    display: "flex",
+    width: "200%",
+    transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+    willChange: "transform",
+  },
+  slidePanel: {
+    width: "50%",
+    minHeight: "100dvh",
+    flexShrink: 0,
+  },
+
   root: {
     minHeight: "100dvh",
     background: BLACK,
@@ -392,7 +512,7 @@ const s = {
     background: "none", border: "none", fontSize: "12px",
     color: MUTED, cursor: "pointer", fontFamily: "inherit",
     textDecoration: "underline", textAlign: "center",
-  },      
+  },
   cancelBtn: {
     background: "none", border: `1px solid ${BORDER}`, borderRadius: "4px",
     padding: "12px", fontSize: "12px", color: MUTED,

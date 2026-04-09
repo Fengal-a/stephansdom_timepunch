@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+import os
 import jwt
 import bcrypt
 
@@ -13,8 +14,7 @@ from ..schemas import UserOut
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ── Config ────────────────────────────────────────────────────────────────────
-# In production, load SECRET_KEY from environment variable
-SECRET_KEY = "change-this-to-a-random-secret-in-production"
+SECRET_KEY = os.environ.get("SECRET_KEY", "change-this-to-a-random-secret-in-production")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 12
 

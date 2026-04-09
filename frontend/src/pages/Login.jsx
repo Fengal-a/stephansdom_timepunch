@@ -104,6 +104,10 @@ export default function Login({ onLogin }) {
               "EINLOGGEN"
             )}
           </button>
+
+          <p style={styles.forgotHint}>
+            Passwort vergessen? Bitte wenden Sie sich an Ihren Administrator.
+          </p>
         </form>
       </div>
 
@@ -258,6 +262,13 @@ const styles = {
     borderRadius: "50%",
     display: "inline-block",
     animation: "spin 0.7s linear infinite",
+  },
+  forgotHint: {
+    margin: 0,
+    fontSize: "11px",
+    color: MUTED,
+    textAlign: "center",
+    lineHeight: "1.5",
   },
   footer: {
     position: "relative",

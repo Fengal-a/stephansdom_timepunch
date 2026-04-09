@@ -1,0 +1,15 @@
+# Environment secrets — never commit these
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.db
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Uploads (user content)
+uploads/

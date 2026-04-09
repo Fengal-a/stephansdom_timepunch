@@ -44,3 +44,19 @@ class PunchResponse(BaseModel):
     action: str  # "punched_in" | "punched_out"
     user_id: int
     entry: TimeEntryOut
+
+
+# ── Message schemas ───────────────────────────────────────────────────────────
+
+class MessageCreate(BaseModel):
+    body: str
+
+class MessageOut(BaseModel):
+    id:          int
+    sender_id:   int
+    sender_name: str
+    body:        str
+    sent_at:     datetime
+    is_read:     bool
+
+    model_config = {"from_attributes": True}

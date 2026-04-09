@@ -6,9 +6,10 @@ export default defineConfig({
   server: {
     host: true, 
     proxy: {
-      "/auth": "http://localhost:8000",
-      "/users": "http://localhost:8000",
-      "/admin": "http://localhost:8000",
+      "/auth":     "http://localhost:8000",
+      "/users":    "http://localhost:8000",
+      "/admin":    "http://localhost:8000",
+      "/messages": "http://localhost:8000",
     },
   },
 });

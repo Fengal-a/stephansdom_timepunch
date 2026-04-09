@@ -4,6 +4,7 @@ from .database import engine, Base
 from .routers import router as users_router
 from .routers import auth_router
 from .routers import admin_router
+from .routers import messages_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -25,6 +26,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(admin_router)
+app.include_router(messages_router)
 
 @app.get("/")
 async def root():

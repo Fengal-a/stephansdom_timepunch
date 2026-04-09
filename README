@@ -1,5 +1,185 @@
 Clock Punching System
+=====================
+A workforce time-tracking app built with FastAPI (backend) and React/Vite (frontend).
+Employees can punch in/out, view their schedule (Dienstplan), and message admins.
+Admins can manage employees, view time entries, export CSV reports, and read messages.
 
-start frontend: npm run dev -- --host 0.0.0.0
 
-start backend: fastapi dev
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LOCAL DEVELOPMENT (laptop)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Requirements
+------------
+- Python 3.12+
+- Node.js 20+
+- PostgreSQL running locally
+
+1. Install Python dependencies
+   pip install -e ".[standard]" psycopg2-binary bcrypt
+
+2. Install frontend dependencies
+   cd frontend && npm install
+
+3. Set up the local database
+   Make sure PostgreSQL is running:
+     sudo systemctl start postgresql
+
+   Create the database (first time only):
+     sudo -u postgres psql
+     > ALTER USER postgres PASSWORD 'postgres';
+     > CREATE DATABASE timepunch;
+     > \q
+
+4. Seed the database (creates admin + sample employees)
+   python -m backend.seed
+   Default admin login: admin / admin123
+   Default employee password: mitarbeiter123
+
+5. Start the backend (from project root)
+   fastapi dev backend/main.py --host 0.0.0.0
+
+6. Start the frontend (from project root)
+   cd frontend && npm run dev -- --host 0.0.0.0
+
+   App runs at:  http://localhost:5173
+   On your phone (via hotspot): http://<your-laptop-ip>:5173
+
+Local environment variables (frontend/.env.local)
+--------------------------------------------------
+VITE_API_URL=
+   Leave empty — the Vite dev server proxies all API calls to localhost:8000.
+   Do NOT set this to an IP address; relative URLs work for both laptop and phone.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DEPLOYING TO A HETZNER SERVER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Prerequisites
+-------------
+- A Hetzner VPS (Ubuntu 22.04 recommended, CX22 or larger)
+- A domain pointed at the server's IP (optional but recommended for HTTPS)
+- Docker and Docker Compose installed on the server
+
+Step 1 — Install Docker on the server
+   ssh root@<your-server-ip>
+   apt update && apt install -y docker.io docker-compose-plugin
+   systemctl enable --now docker
+
+Step 2 — Copy the project to the server
+   Option A — via git (recommended):
+     git clone <your-repo-url> /opt/timepunch
+     cd /opt/timepunch
+
+   Option B — via scp from your laptop:
+     scp -r /home/gantony/Documents/Important/stephansdom root@<server-ip>:/opt/timepunch
+     ssh root@<server-ip>
+     cd /opt/timepunch
+
+Step 3 — Create your .env file
+   cp .env.example .env
+   nano .env
+
+   Fill in all values (see "Secret Variables" section below).
+
+Step 4 — Build and start all containers
+   docker compose up -d --build
+
+   This starts three containers:
+     db        — PostgreSQL database
+     backend   — FastAPI API server
+     frontend  — React app served by nginx (also proxies API calls)
+
+   The app will be available at http://<your-server-ip>
+
+Step 5 — Seed the production database (first time only)
+   docker compose exec backend python -m backend.seed
+
+Step 6 — (Optional) Set up HTTPS with Let's Encrypt
+   Install certbot on the server and obtain a certificate for your domain.
+   Then update frontend/nginx.conf to listen on port 443 and add the cert paths.
+   Rebuild: docker compose up -d --build frontend
+
+Useful commands
+---------------
+   View logs:              docker compose logs -f
+   Restart everything:     docker compose restart
+   Stop everything:        docker compose down
+   Update after code change:
+     git pull
+     docker compose up -d --build
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECRET VARIABLES — WHAT TO SET BEFORE DEPLOYING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+All secrets live in .env (in the project root on the server).
+This file is listed in .gitignore and must NEVER be committed to git.
+Use .env.example as the template.
+
+POSTGRES_USER
+  The database username.
+  Example: timepunch
+  Change from the default — do not use "postgres" in production.
+
+POSTGRES_PASSWORD
+  The database password.
+  !! Must be changed !! Use a strong random password.
+  Generate one: python -c "import secrets; print(secrets.token_hex(16))"
+
+POSTGRES_DB
+  The database name.
+  Example: timepunch
+
+SECRET_KEY
+  Used to sign JWT login tokens. If this leaks, anyone can forge login sessions.
+  !! Must be changed !! Use a long random string.
+  Generate one: python -c "import secrets; print(secrets.token_hex(32))"
+
+VITE_API_URL  (frontend/.env.local — only needed for local dev)
+  Leave empty in all cases. The nginx proxy handles API routing in production,
+  and the Vite dev proxy handles it locally.
+
+Future: email password reset (not yet implemented)
+  When added, you will also need:
+  RESEND_API_KEY   — API key from resend.com (free tier: 3000 emails/month)
+  EMAIL_FROM       — The sender address, e.g. noreply@yourdomain.at
+  APP_URL          — The public URL of your app, e.g. https://timepunch.yourdomain.at
+                     Used to build the reset link in the email.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROJECT STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+stephansdom/
+├── backend/
+│   ├── main.py              FastAPI app entry point
+│   ├── database.py          SQLAlchemy connection (reads DATABASE_URL from env)
+│   ├── models.py            Database models: User, TimeEntry, Message
+│   ├── schemas.py           Pydantic request/response schemas
+│   ├── seed.py              Creates admin + sample employee data
+│   ├── Dockerfile           Container definition for the backend
+│   └── routers/
+│       ├── auth.py          Login, JWT tokens (reads SECRET_KEY from env)
+│       ├── time_entries.py  Punch in/out for employees
+│       ├── admin.py         Admin management, CSV export, Dienstplan image
+│       └── messages.py      Employee → admin inbox
+├── frontend/
+│   ├── Dockerfile           Builds React app, serves via nginx
+│   ├── nginx.conf           Proxies /auth /users /admin /messages to backend
+│   ├── vite.config.js       Dev server proxy (mirrors nginx.conf for local dev)
+│   ├── .env.local           Local dev env (VITE_API_URL= leave empty)
+│   └── src/
+│       ├── App.jsx           Auth routing
+│       └── pages/
+│           ├── Login.jsx     Login screen
+│           ├── Dashboard.jsx Employee view (punch in/out, Dienstplan, messages)
+│           └── Admin.jsx     Admin view (users, entries, inbox, exports)
+├── docker-compose.yml       Defines db + backend + frontend containers
+├── .env.example             Template — copy to .env and fill in secrets
+├── .env                     !! NOT in git !! Your actual secrets
+├── .gitignore
+└── pyproject.toml           Python project config and dependencies

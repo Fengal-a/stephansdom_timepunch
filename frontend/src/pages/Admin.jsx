@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import Dienstplan from "./Dienstplan";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
@@ -53,9 +54,6 @@ function AddUserModal({ onClose, onCreated }) {
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit() {
-    console.log("token:", localStorage.getItem("token"));
-    console.log("API:", API);
-    console.log("url:", `${API}/admin/users`);
     if (!form.name || !form.username || !form.password) {
       setError("Alle Felder sind erforderlich"); return;
     }
@@ -109,32 +107,202 @@ function AddUserModal({ onClose, onCreated }) {
   );
 }
 
+// ── Monthly Export Modal ──────────────────────────────────────────────────────
+
+function MonthlyExportModal({ users, onClose }) {
+  const now = new Date();
+  const [userId, setUserId] = useState(users[0]?.id ?? "");
+  const [year,   setYear]   = useState(now.getFullYear());
+  const [month,  setMonth]  = useState(now.getMonth() + 1);
+  const [loading, setLoading] = useState(false);
+
+  const MONTHS = [
+    "Jänner","Februar","März","April","Mai","Juni",
+    "Juli","August","September","Oktober","November","Dezember"
+  ];
+
+  async function handleExport() {
+    setLoading(true);
+    const token = localStorage.getItem("token");
+    const url = `${API}/admin/export/monthly?user_id=${userId}&year=${year}&month=${month}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) {
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      const cd = res.headers.get("Content-Disposition") ?? "";
+      const match = cd.match(/filename="([^"]+)"/);
+      a.download = match ? match[1] : "export.csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      onClose();
+    }
+    setLoading(false);
+  }
+
+  // Build year options: current year and two prior
+  const years = [now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2];
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={e => e.stopPropagation()}>
+        <p style={s.modalTitle}>Monatsexport</p>
+        <p style={{ margin: 0, fontSize: "12px", color: MUTED }}>
+          CSV-Export für einen Mitarbeiter über einen vollen Monat
+        </p>
+        <div style={s.field}>
+          <label style={s.label}>Mitarbeiter</label>
+          <select
+            style={s.input}
+            value={userId}
+            onChange={e => setUserId(Number(e.target.value))}
+          >
+            {users.map(u => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <div style={{ ...s.field, flex: 2 }}>
+            <label style={s.label}>Monat</label>
+            <select
+              style={s.input}
+              value={month}
+              onChange={e => setMonth(Number(e.target.value))}
+            >
+              {MONTHS.map((m, i) => (
+                <option key={i + 1} value={i + 1}>{m}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ ...s.field, flex: 1 }}>
+            <label style={s.label}>Jahr</label>
+            <select
+              style={s.input}
+              value={year}
+              onChange={e => setYear(Number(e.target.value))}
+            >
+              {years.map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div style={s.modalBtns}>
+          <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+          <button style={s.confirmBtn} onClick={handleExport} disabled={loading || !userId}>
+            {loading ? "..." : "↓ CSV herunterladen"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Reset Password Modal ──────────────────────────────────────────────────────
+
+function ResetPasswordModal({ user: targetUser, onClose }) {
+  const [password, setPassword] = useState("");
+  const [error, setError]       = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [done, setDone]         = useState(false);
+
+  async function handleSubmit() {
+    if (password.length < 4) { setError("Mindestens 4 Zeichen erforderlich"); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch(`${API}/admin/users/${targetUser.id}/password`, {
+        method: "PUT", headers: authHeaders(),
+        body: JSON.stringify({ password }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail); }
+      setDone(true);
+    } catch(e) { setError(e.message); }
+    setLoading(false);
+  }
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={e => e.stopPropagation()}>
+        <p style={s.modalTitle}>Passwort zurücksetzen</p>
+        <p style={{ margin: 0, fontSize: "12px", color: MUTED }}>
+          Neues Passwort für <strong style={{ color: TEXT }}>{targetUser.name}</strong>
+        </p>
+        {done ? (
+          <>
+            <p style={{ margin: 0, fontSize: "13px", color: "#22c55e" }}>
+              Passwort erfolgreich geändert.
+            </p>
+            <button style={s.confirmBtn} onClick={onClose}>Schließen</button>
+          </>
+        ) : (
+          <>
+            {error && <p style={s.errorBox}>{error}</p>}
+            <div style={s.field}>
+              <label style={s.label}>Neues Passwort</label>
+              <input
+                style={s.input} type="password" placeholder="••••••••"
+                value={password} autoFocus
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleSubmit()}
+              />
+            </div>
+            <div style={s.modalBtns}>
+              <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+              <button style={s.confirmBtn} onClick={handleSubmit} disabled={loading}>
+                {loading ? "..." : "Zurücksetzen"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Admin Component ──────────────────────────────────────────────────────
 
 export default function Admin({ user, onLogout }) {
   const [users,         setUsers]         = useState([]);
   const [entries,       setEntries]       = useState([]);
   const [activeEntries, setActiveEntries] = useState([]);
+  const [messages,      setMessages]      = useState([]);
   const [expandedUser,  setExpandedUser]  = useState(null);
-  const [showAddUser,   setShowAddUser]   = useState(false);
+  const [showAddUser,      setShowAddUser]      = useState(false);
+  const [showMonthlyExport, setShowMonthlyExport] = useState(false);
+  const [resetUser,        setResetUser]        = useState(null);
   const [loading,       setLoading]       = useState(true);
+  const [page,          setPage]          = useState("admin"); // "admin" | "dienstplan"
+  const touchStartX                       = useRef(null);
 
   useEffect(() => { fetchAll(); }, []);
 
   async function fetchAll() {
     setLoading(true);
     try {
-      const [uRes, eRes, aRes] = await Promise.all([
+      const [uRes, eRes, aRes, mRes] = await Promise.all([
         fetch(`${API}/admin/users`,          { headers: authHeaders() }),
         fetch(`${API}/admin/entries/today`,  { headers: authHeaders() }),
         fetch(`${API}/admin/entries/active`, { headers: authHeaders() }),
+        fetch(`${API}/messages`,             { headers: authHeaders() }),
       ]);
       if (uRes.status === 401) { onLogout(); return; }
       setUsers(await uRes.json());
       setEntries(await eRes.json());
       setActiveEntries(await aRes.json());
+      if (mRes.ok) setMessages(await mRes.json());
     } catch {}
     setLoading(false);
+  }
+
+  async function handleMarkRead(id) {
+    await fetch(`${API}/messages/${id}/read`, { method: "PATCH", headers: authHeaders() });
+    setMessages(prev => prev.map(m => m.id === id ? { ...m, is_read: true } : m));
+  }
+
+  async function handleDeleteMessage(id) {
+    await fetch(`${API}/messages/${id}`, { method: "DELETE", headers: authHeaders() });
+    setMessages(prev => prev.filter(m => m.id !== id));
   }
 
   async function handleAdminPunch(userId) {
@@ -152,164 +320,252 @@ export default function Admin({ user, onLogout }) {
     fetchAll();
   }
 
-  // Group today's entries by user
+  function handleTouchStart(e) {
+    touchStartX.current = e.touches[0].clientX;
+  }
+
+  function handleTouchEnd(e) {
+    if (touchStartX.current === null) return;
+    const diff = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (diff < -60 && page === "admin") setPage("dienstplan");
+    if (diff > 60  && page === "dienstplan") setPage("admin");
+  }
+
   const entriesByUser = entries.reduce((acc, e) => {
     if (!acc[e.user_id]) acc[e.user_id] = [];
     acc[e.user_id].push(e);
     return acc;
   }, {});
 
-  const activeUserIds = new Set(activeEntries.map(e => e.user_id));
+  const activeUserIds  = new Set(activeEntries.map(e => e.user_id));
+  const slideOffset    = page === "dienstplan" ? "-50%" : "0%";
 
   return (
-    <div style={s.root}>
-      <div style={s.bg} aria-hidden="true" />
+    <div
+      style={s.slideViewport}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      <div style={{ ...s.slideTrack, transform: `translateX(${slideOffset})` }}>
 
-      {/* Header */}
-      <header style={s.header}>
-        <div style={s.brand}>
-          <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
-            <rect x="3"  y="3"  width="10" height="10" fill="#F5620F" />
-            <rect x="15" y="3"  width="10" height="10" fill="#F5620F" opacity=".4" />
-            <rect x="3"  y="15" width="10" height="10" fill="#F5620F" opacity=".4" />
-            <rect x="15" y="15" width="10" height="10" fill="#F5620F" />
-          </svg>
-          <span style={s.brandText}>TIMEPUNCH</span>
-          <span style={s.adminBadge}>ADMIN</span>
-        </div>
-        <div style={s.headerRight}>
-          <span style={s.userName}>{user.name}</span>
-          <button style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
-        </div>
-      </header>
+        {/* ── Admin panel ── */}
+        <div style={s.slidePanel}>
+          <div style={s.root}>
+            <div style={s.bg} aria-hidden="true" />
 
-      <main style={s.main}>
+            {/* Header */}
+            <header style={s.header}>
+              <div style={s.brand}>
+                <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
+                  <rect x="3"  y="3"  width="10" height="10" fill="#F5620F" />
+                  <rect x="15" y="3"  width="10" height="10" fill="#F5620F" opacity=".4" />
+                  <rect x="3"  y="15" width="10" height="10" fill="#F5620F" opacity=".4" />
+                  <rect x="15" y="15" width="10" height="10" fill="#F5620F" />
+                </svg>
+                <span style={s.brandText}>TIMEPUNCH</span>
+                <span style={s.adminBadge}>ADMIN</span>
+              </div>
+              <div style={s.headerRight}>
+                <span style={s.userName}>{user.name}</span>
+                <button style={s.logoutBtn} onClick={() => setPage("dienstplan")}>Dienstplan</button>
+                <button style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
+              </div>
+            </header>
 
-        {/* ── Active users ── */}
-        <section style={s.section}>
-          <div style={s.sectionHeader}>
-            <p style={s.sectionTitle}>AKTIV JETZT</p>
-            <span style={s.badge}>{activeEntries.length}</span>
-          </div>
-          {activeEntries.length === 0 ? (
-            <p style={s.empty}>Niemand eingestempelt</p>
-          ) : (
-            <div style={s.activeList}>
-              {activeEntries.map(ae => (
-                <div key={ae.entry_id} style={s.activeRow}>
-                  <div style={s.activeLeft}>
-                    <span style={s.activeDot} />
-                    <span style={s.activeName}>{ae.user_name}</span>
-                    <span style={s.activeSince}>seit {formatTime(ae.punch_in)}</span>
-                  </div>
-                  <button
-                    style={s.punchOutBtn}
-                    onClick={() => handleAdminPunch(ae.user_id)}
-                  >
-                    Ausstempeln
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+            <main style={s.main}>
 
-        {/* ── Toolbar ── */}
-        <div style={s.toolbar}>
-          <p style={s.sectionTitle}>HEUTE — {formatDate(new Date().toISOString())}</p>
-          <div style={s.toolbarBtns}>
-            <button style={s.ghostBtn} disabled title="Demnächst verfügbar">
-              📅 Vergangene Tage
-            </button>
-            <button style={s.ghostBtn} onClick={() => exportCSV(entries, users)}>
-              ↓ CSV Export
-            </button>
-            <button style={s.orangeBtn} onClick={() => setShowAddUser(true)}>
-              + Mitarbeiter
-            </button>
-          </div>
-        </div>
-
-        {/* ── Users & entries table ── */}
-        <section style={s.section}>
-          {loading ? (
-            <p style={s.empty}>Laden...</p>
-          ) : users.filter(u => !u.is_admin).length === 0 ? (
-            <p style={s.empty}>Keine Mitarbeiter vorhanden</p>
-          ) : (
-            users.filter(u => !u.is_admin).map(u => {
-              const uEntries = entriesByUser[u.id] ?? [];
-              const isExpanded = expandedUser === u.id;
-              const isActive = activeUserIds.has(u.id);
-              const totalMins = uEntries.reduce((s, e) => s + (e.duration_minutes ?? 0), 0);
-
-              return (
-                <div key={u.id} style={s.userBlock}>
-                  {/* User row header */}
-                  <div
-                    style={{ ...s.userRow, ...(isActive ? s.userRowActive : {}) }}
-                    onClick={() => setExpandedUser(isExpanded ? null : u.id)}
-                  >
-                    <div style={s.userLeft}>
-                      {isActive && <span style={s.activeDot} />}
-                      <span style={s.userNameCell}>{u.name}</span>
-                      <span style={s.userUsername}>@{u.username}</span>
-                    </div>
-                    <div style={s.userRight}>
-                      {uEntries.length > 0 && (
-                        <span style={s.totalDur}>{formatDuration(totalMins)}</span>
-                      )}
-                      <span style={s.entryCount}>{uEntries.length} Einträge</span>
-                      <span style={s.chevron}>{isExpanded ? "▲" : "▼"}</span>
-                    </div>
-                  </div>
-
-                  {/* Expanded entries */}
-                  {isExpanded && (
-                    <div style={s.entriesBlock}>
-                      {uEntries.length === 0 ? (
-                        <p style={s.emptySmall}>Keine Einträge heute</p>
-                      ) : (
-                        uEntries.map(e => (
-                          <div key={e.id} style={s.entryRow}>
-                            <div style={s.entryTimes}>
-                              <span style={s.entryTime}>
-                                {formatTime(e.punch_in)} → {e.punch_out ? formatTime(e.punch_out) : <span style={{ color: "#22c55e" }}>läuft</span>}
-                              </span>
-                              {e.duration_minutes != null && (
-                                <span style={s.entryDur}>{formatDuration(e.duration_minutes)}</span>
-                              )}
-                            </div>
-                            {e.note && <p style={s.entryNote}>"{e.note}"</p>}
-                            <button
-                              style={s.deleteBtn}
-                              onClick={() => handleDeleteEntry(e.id)}
-                            >
-                              Löschen
-                            </button>
-                          </div>
-                        ))
-                      )}
-                      {/* Manual punch button */}
-                      <button
-                        style={s.manualPunchBtn}
-                        onClick={() => handleAdminPunch(u.id)}
-                      >
-                        {isActive ? "⏹ Manuell ausstempeln" : "▶ Manuell einstempeln"}
-                      </button>
-                    </div>
+              {/* ── Inbox ── */}
+              <section style={s.section}>
+                <div style={s.sectionHeader}>
+                  <p style={s.sectionTitle}>POSTEINGANG</p>
+                  {messages.filter(m => !m.is_read).length > 0 && (
+                    <span style={s.badge}>{messages.filter(m => !m.is_read).length} neu</span>
                   )}
                 </div>
-              );
-            })
-          )}
-        </section>
-      </main>
+                {messages.length === 0 ? (
+                  <p style={s.empty}>Keine Nachrichten</p>
+                ) : (
+                  messages.map(m => (
+                    <div key={m.id} style={{ ...s.msgRow, ...(m.is_read ? {} : s.msgRowUnread) }}>
+                      <div style={s.msgMeta}>
+                        <span style={s.msgSender}>{m.sender_name}</span>
+                        <span style={s.msgTime}>
+                          {new Date(m.sent_at).toLocaleString("de-AT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      <p style={s.msgBody}>{m.body}</p>
+                      <div style={s.msgActions}>
+                        {!m.is_read && (
+                          <button style={s.msgReadBtn} onClick={() => handleMarkRead(m.id)}>
+                            Als gelesen markieren
+                          </button>
+                        )}
+                        <button style={s.deleteBtn} onClick={() => handleDeleteMessage(m.id)}>
+                          Löschen
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </section>
 
+              {/* ── Active users ── */}
+              <section style={s.section}>
+                <div style={s.sectionHeader}>
+                  <p style={s.sectionTitle}>AKTIV JETZT</p>
+                  <span style={s.badge}>{activeEntries.length}</span>
+                </div>
+                {activeEntries.length === 0 ? (
+                  <p style={s.empty}>Niemand eingestempelt</p>
+                ) : (
+                  <div style={s.activeList}>
+                    {activeEntries.map(ae => (
+                      <div key={ae.entry_id} style={s.activeRow}>
+                        <div style={s.activeLeft}>
+                          <span style={s.activeDot} />
+                          <span style={s.activeName}>{ae.user_name}</span>
+                          <span style={s.activeSince}>seit {formatTime(ae.punch_in)}</span>
+                        </div>
+                        <button
+                          style={s.punchOutBtn}
+                          onClick={() => handleAdminPunch(ae.user_id)}
+                        >
+                          Ausstempeln
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* ── Toolbar ── */}
+              <div style={s.toolbar}>
+                <p style={s.sectionTitle}>HEUTE — {formatDate(new Date().toISOString())}</p>
+                <div style={s.toolbarBtns}>
+                  <button style={s.ghostBtn} disabled title="Demnächst verfügbar">
+                    📅 Vergangene Tage
+                  </button>
+                  <button style={s.ghostBtn} onClick={() => exportCSV(entries, users)}>
+                    ↓ CSV Export
+                  </button>
+                  <button style={s.ghostBtn} onClick={() => setShowMonthlyExport(true)}>
+                    ↓ Monatsexport
+                  </button>
+                  <button style={s.orangeBtn} onClick={() => setShowAddUser(true)}>
+                    + Mitarbeiter
+                  </button>
+                </div>
+              </div>
+
+              {/* ── Users & entries table ── */}
+              <section style={s.section}>
+                {loading ? (
+                  <p style={s.empty}>Laden...</p>
+                ) : users.filter(u => !u.is_admin).length === 0 ? (
+                  <p style={s.empty}>Keine Mitarbeiter vorhanden</p>
+                ) : (
+                  users.filter(u => !u.is_admin).map(u => {
+                    const uEntries = entriesByUser[u.id] ?? [];
+                    const isExpanded = expandedUser === u.id;
+                    const isActive = activeUserIds.has(u.id);
+                    const totalMins = uEntries.reduce((acc, e) => acc + (e.duration_minutes ?? 0), 0);
+
+                    return (
+                      <div key={u.id} style={s.userBlock}>
+                        <div
+                          style={{ ...s.userRow, ...(isActive ? s.userRowActive : {}) }}
+                          onClick={() => setExpandedUser(isExpanded ? null : u.id)}
+                        >
+                          <div style={s.userLeft}>
+                            {isActive && <span style={s.activeDot} />}
+                            <span style={s.userNameCell}>{u.name}</span>
+                            <span style={s.userUsername}>@{u.username}</span>
+                          </div>
+                          <div style={s.userRight}>
+                            {uEntries.length > 0 && (
+                              <span style={s.totalDur}>{formatDuration(totalMins)}</span>
+                            )}
+                            <span style={s.entryCount}>{uEntries.length} Einträge</span>
+                            <span style={s.chevron}>{isExpanded ? "▲" : "▼"}</span>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div style={s.entriesBlock}>
+                            {uEntries.length === 0 ? (
+                              <p style={s.emptySmall}>Keine Einträge heute</p>
+                            ) : (
+                              uEntries.map(e => (
+                                <div key={e.id} style={s.entryRow}>
+                                  <div style={s.entryTimes}>
+                                    <span style={s.entryTime}>
+                                      {formatTime(e.punch_in)} → {e.punch_out ? formatTime(e.punch_out) : <span style={{ color: "#22c55e" }}>läuft</span>}
+                                    </span>
+                                    {e.duration_minutes != null && (
+                                      <span style={s.entryDur}>{formatDuration(e.duration_minutes)}</span>
+                                    )}
+                                  </div>
+                                  {e.note && <p style={s.entryNote}>"{e.note}"</p>}
+                                  <button
+                                    style={s.deleteBtn}
+                                    onClick={() => handleDeleteEntry(e.id)}
+                                  >
+                                    Löschen
+                                  </button>
+                                </div>
+                              ))
+                            )}
+                            <div style={{ display: "flex", gap: "8px" }}>
+                              <button
+                                style={s.manualPunchBtn}
+                                onClick={() => handleAdminPunch(u.id)}
+                              >
+                                {isActive ? "⏹ Manuell ausstempeln" : "▶ Manuell einstempeln"}
+                              </button>
+                              <button
+                                style={s.manualPunchBtn}
+                                onClick={() => setResetUser(u)}
+                              >
+                                Passwort zurücksetzen
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </section>
+            </main>
+
+          </div>
+        </div>
+
+        {/* ── Dienstplan panel ── */}
+        <div style={s.slidePanel}>
+          <Dienstplan onSwipeBack={() => setPage("admin")} isAdmin={true} />
+        </div>
+
+      </div>
+
+      {/* Modals rendered outside the transformed slideTrack so position:fixed works correctly */}
+      {showMonthlyExport && (
+        <MonthlyExportModal
+          users={users.filter(u => !u.is_admin)}
+          onClose={() => setShowMonthlyExport(false)}
+        />
+      )}
       {showAddUser && (
         <AddUserModal
           onClose={() => setShowAddUser(false)}
           onCreated={fetchAll}
+        />
+      )}
+      {resetUser && (
+        <ResetPasswordModal
+          user={resetUser}
+          onClose={() => setResetUser(null)}
         />
       )}
     </div>
@@ -327,6 +583,24 @@ const MUTED   = "#6B6B6B";
 const GREEN   = "#22c55e";
 
 const s = {
+  // Swipe slide container
+  slideViewport: {
+    width: "100vw",
+    overflow: "hidden",
+    position: "relative",
+  },
+  slideTrack: {
+    display: "flex",
+    width: "200%",
+    transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+    willChange: "transform",
+  },
+  slidePanel: {
+    width: "50%",
+    minHeight: "100dvh",
+    flexShrink: 0,
+  },
+
   root: {
     minHeight: "100dvh", background: BLACK,
     fontFamily: "'DM Mono', 'Courier New', monospace",
@@ -375,7 +649,23 @@ const s = {
   empty:      { margin: 0, padding: "20px 16px", fontSize: "12px", color: MUTED, textAlign: "center" },
   emptySmall: { margin: 0, padding: "12px 16px", fontSize: "11px", color: MUTED },
 
-  // Active users
+  // Inbox
+  msgRow: {
+    padding: "14px 16px", borderBottom: `1px solid ${BORDER}`,
+    display: "flex", flexDirection: "column", gap: "6px",
+  },
+  msgRowUnread: { background: "rgba(245,98,15,0.04)", borderLeft: `3px solid ${ORANGE}` },
+  msgMeta:   { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  msgSender: { fontSize: "13px", fontWeight: "600", color: TEXT },
+  msgTime:   { fontSize: "11px", color: MUTED },
+  msgBody:   { margin: 0, fontSize: "13px", color: TEXT, lineHeight: "1.5", whiteSpace: "pre-wrap" },
+  msgActions: { display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "4px" },
+  msgReadBtn: {
+    background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "4px 10px", fontSize: "10px", color: MUTED,
+    cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.06em",
+  },
+
   activeList: { display: "flex", flexDirection: "column" },
   activeRow: {
     display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -391,7 +681,6 @@ const s = {
     color: ORANGE, cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.06em",
   },
 
-  // Toolbar
   toolbar: {
     display: "flex", alignItems: "center", justifyContent: "space-between",
     flexWrap: "wrap", gap: "10px",
@@ -408,12 +697,10 @@ const s = {
     color: "#fff", cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.08em",
   },
 
-  // Users table
   userBlock: { borderBottom: `1px solid ${BORDER}` },
   userRow: {
     display: "flex", alignItems: "center", justifyContent: "space-between",
-    padding: "14px 16px", cursor: "pointer",
-    transition: "background 0.1s",
+    padding: "14px 16px", cursor: "pointer", transition: "background 0.1s",
   },
   userRowActive: { background: "rgba(34,197,94,0.04)" },
   userLeft:      { display: "flex", alignItems: "center", gap: "10px" },
@@ -424,7 +711,6 @@ const s = {
   entryCount:    { fontSize: "11px", color: MUTED },
   chevron:       { fontSize: "10px", color: MUTED },
 
-  // Entry rows
   entriesBlock: {
     background: BLACK, borderTop: `1px solid ${BORDER}`,
     padding: "8px 16px 12px", display: "flex", flexDirection: "column", gap: "8px",
@@ -452,7 +738,6 @@ const s = {
     alignSelf: "flex-start",
   },
 
-  // Add user modal
   overlay: {
     position: "fixed", inset: 0, zIndex: 50,
     background: "rgba(0,0,0,0.75)",

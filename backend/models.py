@@ -30,3 +30,15 @@ class TimeEntry(Base):
     note = Column(String, nullable=True)  # optional note added on punch-out
 
     user = relationship("User", back_populates="time_entries")
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    sender_id  = Column(Integer, ForeignKey("users.id"), nullable=False)
+    body       = Column(String, nullable=False)
+    sent_at    = Column(DateTime(timezone=True), server_default=func.now())
+    is_read    = Column(Boolean, default=False)
+
+    sender = relationship("User")
