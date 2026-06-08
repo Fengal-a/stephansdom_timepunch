@@ -22,6 +22,9 @@ export default function Login({ onLogin }) {
       });
 
       if (!res.ok) {
+        if (res.status === 429) {
+          throw new Error("Zu viele Anmeldeversuche. Bitte warten Sie einen Moment.");
+        }
         const data = await res.json();
         throw new Error(data.detail ?? "Login failed");
       }
@@ -45,15 +48,7 @@ export default function Login({ onLogin }) {
       <div style={styles.card}>
         {/* Logo / brand */}
         <div style={styles.brand}>
-          <div style={styles.brandIcon}>
-            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-              <rect x="3" y="3" width="10" height="10" fill="currentColor" />
-              <rect x="15" y="3" width="10" height="10" fill="currentColor" opacity=".4" />
-              <rect x="3" y="15" width="10" height="10" fill="currentColor" opacity=".4" />
-              <rect x="15" y="15" width="10" height="10" fill="currentColor" />
-            </svg>
-          </div>
-          <span style={styles.brandName}>TIMEPUNCH</span>
+          <img src="/cathedral.png" alt="Stephansdom" style={styles.logo} />
         </div>
 
         <h1 style={styles.heading}>Anmelden</h1>
@@ -163,23 +158,13 @@ const styles = {
   },
   brand: {
     display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    marginBottom: "28px",
-    color: ORANGE,
-  },
-  brandIcon: {
-    width: "36px",
-    height: "36px",
-    display: "flex",
-    alignItems: "center",
     justifyContent: "center",
+    marginBottom: "28px",
   },
-  brandName: {
-    fontSize: "13px",
-    fontWeight: "700",
-    letterSpacing: "0.2em",
-    color: TEXT,
+  logo: {
+    height: "64px",
+    width: "auto",
+    objectFit: "contain",
   },
   heading: {
     margin: "0 0 4px",

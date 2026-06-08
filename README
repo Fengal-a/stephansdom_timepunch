@@ -14,7 +14,7 @@ Requirements
 - Python 3.12+
 - Node.js 20+
 - PostgreSQL running locally
-
+//source .venv/bin/fastapi
 1. Install Python dependencies
    pip install -e ".[standard]" psycopg2-binary bcrypt
 

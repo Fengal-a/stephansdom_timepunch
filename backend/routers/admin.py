@@ -167,7 +167,8 @@ def admin_punch(
         db.refresh(entry)
         return {"action": "punched_in", "entry_id": entry.id}
     else:
-        duration = int((now - open_entry.punch_in.replace(tzinfo=timezone.utc)).total_seconds() / 60)
+        punch_in_utc = open_entry.punch_in.astimezone(timezone.utc) if open_entry.punch_in.tzinfo else open_entry.punch_in.replace(tzinfo=timezone.utc)
+        duration = int((now - punch_in_utc).total_seconds() / 60)
         open_entry.punch_out = now
         open_entry.duration_minutes = duration
         db.commit()

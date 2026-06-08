@@ -1,5 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Request, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -12,6 +14,7 @@ from ..models import User
 from ..schemas import UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+limiter = Limiter(key_func=get_remote_address)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 SECRET_KEY = os.environ.get("SECRET_KEY", "change-this-to-a-random-secret-in-production")
@@ -71,7 +74,9 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/login")
+@limiter.limit("5/minute")  # limit login attempts to prevent brute-force
 def login(
+    request: Request,
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):

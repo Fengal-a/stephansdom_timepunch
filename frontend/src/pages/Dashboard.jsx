@@ -162,19 +162,11 @@ export default function Dashboard({ user, onLogout }) {
 
             {/* Header */}
             <header style={s.header}>
-              <div style={s.brand}>
-                <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
-                  <rect x="3" y="3" width="10" height="10" fill="#F5620F" />
-                  <rect x="15" y="3" width="10" height="10" fill="#F5620F" opacity=".4" />
-                  <rect x="3" y="15" width="10" height="10" fill="#F5620F" opacity=".4" />
-                  <rect x="15" y="15" width="10" height="10" fill="#F5620F" />
-                </svg>
-                <span style={s.brandText}>TIMEPUNCH</span>
-              </div>
+              <img src="/cathedral.png" alt="Stephansdom" style={s.logo} />
               <div style={s.headerRight}>
                 <span style={s.userName}>{user.name}</span>
                 <button style={s.logoutBtn} onClick={() => setPage("dienstplan")}>Dienstplan</button>
-                <button style={s.logoutBtn} onClick={openCompose}>✉ Nachricht</button>
+                <button style={s.logoutBtn} onClick={openCompose}>✉</button>
                 <button style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
               </div>
             </header>
@@ -388,18 +380,19 @@ const s = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "16px 20px",
+    gap: "8px",
+    padding: "10px 14px",
     borderBottom: `1px solid ${BORDER}`,
     background: SURFACE,
+    flexWrap: "wrap",
   },
-  brand: { display: "flex", alignItems: "center", gap: "8px" },
-  brandText: { fontSize: "12px", fontWeight: "700", letterSpacing: "0.18em", color: TEXT },
-  headerRight: { display: "flex", alignItems: "center", gap: "12px" },
-  userName: { fontSize: "12px", color: MUTED },
+  logo: { height: "36px", width: "auto", objectFit: "contain", flexShrink: 0 },
+  headerRight: { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" },
+  userName: { fontSize: "11px", color: MUTED, marginRight: "2px" },
   logoutBtn: {
     background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
-    padding: "5px 10px", fontSize: "11px", color: MUTED, cursor: "pointer",
-    fontFamily: "inherit", letterSpacing: "0.08em",
+    padding: "5px 8px", fontSize: "11px", color: MUTED, cursor: "pointer",
+    fontFamily: "inherit", letterSpacing: "0.06em", whiteSpace: "nowrap",
   },
   main: {
     position: "relative",

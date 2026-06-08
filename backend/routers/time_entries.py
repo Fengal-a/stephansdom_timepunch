@@ -59,7 +59,8 @@ def punch(
         db.refresh(entry)
         return PunchResponse(action="punched_in", user_id=current_user.id, entry=entry)
     else:
-        duration = int((now - open_entry.punch_in.replace(tzinfo=timezone.utc)).total_seconds() / 60)
+        punch_in_utc = open_entry.punch_in.astimezone(timezone.utc) if open_entry.punch_in.tzinfo else open_entry.punch_in.replace(tzinfo=timezone.utc)
+        duration = int((now - punch_in_utc).total_seconds() / 60)
         open_entry.punch_out = now
         open_entry.duration_minutes = duration
         open_entry.note = payload.note  # may be None — that's fine

@@ -365,13 +365,7 @@ export default function Admin({ user, onLogout }) {
             {/* Header */}
             <header style={s.header}>
               <div style={s.brand}>
-                <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
-                  <rect x="3"  y="3"  width="10" height="10" fill="#F5620F" />
-                  <rect x="15" y="3"  width="10" height="10" fill="#F5620F" opacity=".4" />
-                  <rect x="3"  y="15" width="10" height="10" fill="#F5620F" opacity=".4" />
-                  <rect x="15" y="15" width="10" height="10" fill="#F5620F" />
-                </svg>
-                <span style={s.brandText}>TIMEPUNCH</span>
+                <img src="/cathedral.png" alt="Stephansdom" style={s.logo} />
                 <span style={s.adminBadge}>ADMIN</span>
               </div>
               <div style={s.headerRight}>
@@ -628,19 +622,23 @@ const s = {
   header: {
     position: "relative", zIndex: 1,
     display: "flex", alignItems: "center", justifyContent: "space-between",
-    padding: "16px 20px", borderBottom: `1px solid ${BORDER}`, background: SURFACE,
+    gap: "8px", padding: "10px 14px",
+    borderBottom: `1px solid ${BORDER}`, background: SURFACE,
+    flexWrap: "wrap",
   },
   brand:      { display: "flex", alignItems: "center", gap: "8px" },
-  brandText:  { fontSize: "12px", fontWeight: "700", letterSpacing: "0.18em", color: TEXT },
+  logo:       { height: "36px", width: "auto", objectFit: "contain", flexShrink: 0 },
   adminBadge: {
     fontSize: "9px", fontWeight: "700", letterSpacing: "0.15em",
     background: ORANGE, color: "#fff", padding: "2px 6px", borderRadius: "2px",
+    whiteSpace: "nowrap",
   },
-  headerRight: { display: "flex", alignItems: "center", gap: "12px" },
-  userName:    { fontSize: "12px", color: MUTED },
+  headerRight: { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" },
+  userName:    { fontSize: "11px", color: MUTED, marginRight: "2px" },
   logoutBtn: {
     background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
-    padding: "5px 10px", fontSize: "11px", color: MUTED, cursor: "pointer", fontFamily: "inherit",
+    padding: "5px 8px", fontSize: "11px", color: MUTED, cursor: "pointer",
+    fontFamily: "inherit", whiteSpace: "nowrap",
   },
   main: {
     position: "relative", zIndex: 1, flex: 1,

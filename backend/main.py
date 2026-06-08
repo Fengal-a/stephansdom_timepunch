@@ -5,12 +5,15 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import jwt
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
 from .database import engine, Base
 from .routers import router as users_router
 from .routers import auth_router
 from .routers import admin_router
 from .routers import messages_router
-from .routers.auth import SECRET_KEY, ALGORITHM
+from .routers.auth import SECRET_KEY, ALGORITHM, limiter
 
 Base.metadata.create_all(bind=engine)
 
@@ -53,6 +56,8 @@ app = FastAPI(
     description="Time punching backend for workforce clock-in/out",
     version="0.1.0",
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 @app.middleware("http")
