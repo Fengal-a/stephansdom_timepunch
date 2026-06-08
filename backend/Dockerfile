@@ -8,7 +8,6 @@ RUN pip install --no-cache-dir ".[standard]" psycopg2-binary bcrypt
 
 # Copy source
 COPY backend/ ./backend/
-COPY uploads/ ./uploads/
 
 EXPOSE 8000
 

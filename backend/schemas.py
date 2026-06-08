@@ -32,12 +32,19 @@ class TimeEntryOut(BaseModel):
     punch_out: Optional[datetime]
     duration_minutes: Optional[int]
     note: Optional[str]
+    lunch_start: Optional[datetime]
+    lunch_end: Optional[datetime]
 
     model_config = {"from_attributes": True}
 
 
 class PunchRequest(BaseModel):
     note: Optional[str] = None
+
+
+class LunchRequest(BaseModel):
+    lunch_start: str  # "HH:MM"
+    lunch_end: str    # "HH:MM"
 
 
 class PunchResponse(BaseModel):

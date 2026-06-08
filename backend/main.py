@@ -55,6 +55,8 @@ app = FastAPI(
     title="TimePunch API",
     description="Time punching backend for workforce clock-in/out",
     version="0.1.0",
+    docs_url=None,
+    redoc_url=None,
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -98,8 +100,7 @@ async def office_network_restriction(request: Request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://192.168.18.8:5173", "http://10.9.22.181:5173",
-                   "http://172.20.10.2:5173"],
+    allow_origins=["http://localhost:5173", "https://app.stephansdom.at"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

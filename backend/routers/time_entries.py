@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from ..database import get_db
 from ..models import User, TimeEntry
-from ..schemas import PunchResponse, PunchRequest, TimeEntryOut, UserOut, UserCreate
+from ..schemas import PunchResponse, PunchRequest, TimeEntryOut, UserOut, UserCreate, LunchRequest
 from .auth import get_current_user
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -87,6 +87,42 @@ def get_my_status(
         "clocked_in": open_entry is not None,
         "punch_in": open_entry.punch_in if open_entry else None,
     }
+
+
+@router.post("/lunch", response_model=TimeEntryOut)
+def set_lunch(
+    payload: LunchRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    today = datetime.now(timezone.utc).date()
+    entry = (
+        db.query(TimeEntry)
+        .filter(
+            TimeEntry.user_id == current_user.id,
+            TimeEntry.punch_in >= datetime(today.year, today.month, today.day, tzinfo=timezone.utc),
+        )
+        .order_by(TimeEntry.punch_in.desc())
+        .first()
+    )
+    if not entry:
+        raise HTTPException(status_code=400, detail="Kein Arbeitseintrag für heute gefunden")
+    try:
+        h_s, m_s = map(int, payload.lunch_start.split(":"))
+        h_e, m_e = map(int, payload.lunch_end.split(":"))
+    except Exception:
+        raise HTTPException(status_code=422, detail="Ungültiges Zeitformat (HH:MM erwartet)")
+    if not (0 <= h_s <= 23 and 0 <= m_s <= 59 and 0 <= h_e <= 23 and 0 <= m_e <= 59):
+        raise HTTPException(status_code=422, detail="Ungültige Uhrzeit")
+    ls = datetime(today.year, today.month, today.day, h_s, m_s, tzinfo=timezone.utc)
+    le = datetime(today.year, today.month, today.day, h_e, m_e, tzinfo=timezone.utc)
+    if le <= ls:
+        raise HTTPException(status_code=422, detail="Endzeit muss nach Startzeit liegen")
+    entry.lunch_start = ls
+    entry.lunch_end   = le
+    db.commit()
+    db.refresh(entry)
+    return entry
 
 
 @router.get("/entries", response_model=List[TimeEntryOut])

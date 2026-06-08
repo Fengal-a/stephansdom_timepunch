@@ -11,7 +11,7 @@ import io
 
 from ..database import get_db
 from ..models import User, TimeEntry
-from ..schemas import UserOut, TimeEntryOut, UserCreate
+from ..schemas import UserOut, TimeEntryOut, UserCreate, LunchRequest
 from .auth import require_admin, get_current_user
 
 UPLOAD_DIR = Path("uploads")
@@ -126,6 +126,32 @@ def get_active_entries(
     return result
 
 
+@router.post("/entries/{entry_id}/lunch")
+def set_lunch_for_entry(
+    entry_id: int,
+    payload: LunchRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    date = entry.punch_in.date()
+    try:
+        h_s, m_s = map(int, payload.lunch_start.split(":"))
+        h_e, m_e = map(int, payload.lunch_end.split(":"))
+    except Exception:
+        raise HTTPException(status_code=422, detail="Ungültiges Zeitformat")
+    ls = datetime(date.year, date.month, date.day, h_s, m_s, tzinfo=timezone.utc)
+    le = datetime(date.year, date.month, date.day, h_e, m_e, tzinfo=timezone.utc)
+    if le <= ls:
+        raise HTTPException(status_code=422, detail="Endzeit muss nach Startzeit liegen")
+    entry.lunch_start = ls
+    entry.lunch_end   = le
+    db.commit()
+    return {"ok": True}
+
+
 @router.delete("/entries/{entry_id}")
 def delete_entry(
     entry_id: int,
@@ -226,14 +252,18 @@ def export_monthly(
     writer.writerow(["Mitarbeiter", user.name])
     writer.writerow(["Zeitraum", f"{month:02d}/{year}"])
     writer.writerow([])
-    writer.writerow(["Datum", "Einstempeln", "Ausstempeln", "Dauer", "Notiz"])
+    writer.writerow(["Datum", "Einstempeln", "Ausstempeln", "Dauer", "Mittagspause", "Notiz"])
 
     for e in entries:
+        lunch = ""
+        if e.lunch_start and e.lunch_end:
+            lunch = f"{e.lunch_start.strftime('%H:%M')} – {e.lunch_end.strftime('%H:%M')}"
         writer.writerow([
             e.punch_in.strftime("%d.%m.%Y") if e.punch_in else "",
             fmt_dt(e.punch_in),
             fmt_dt(e.punch_out) if e.punch_out else "läuft",
             fmt_dur(e.duration_minutes),
+            lunch,
             e.note or "",
         ])
 

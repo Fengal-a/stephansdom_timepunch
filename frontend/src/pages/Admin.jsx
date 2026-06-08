@@ -260,6 +260,63 @@ function ResetPasswordModal({ user: targetUser, onClose }) {
   );
 }
 
+// ── Admin Lunch Modal ─────────────────────────────────────────────────────────
+
+function AdminLunchModal({ entry, onClose, onSaved }) {
+  const existing_start = entry.lunch_start
+    ? new Date(entry.lunch_start).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit", hour12: false })
+    : "12:00";
+  const existing_end = entry.lunch_end
+    ? new Date(entry.lunch_end).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit", hour12: false })
+    : "13:00";
+
+  const [from,    setFrom]    = useState(existing_start);
+  const [till,    setTill]    = useState(existing_end);
+  const [error,   setError]   = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSave() {
+    setLoading(true); setError("");
+    try {
+      const res = await fetch(`${API}/admin/entries/${entry.id}/lunch`, {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({ lunch_start: from, lunch_end: till }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail); }
+      onSaved();
+    } catch(e) { setError(e.message); }
+    setLoading(false);
+  }
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={e => e.stopPropagation()}>
+        <p style={s.modalTitle}>☕ Mittagspause eintragen</p>
+        <p style={{ margin: 0, fontSize: "12px", color: MUTED }}>
+          Eintrag vom {new Date(entry.punch_in).toLocaleString("de-AT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+        </p>
+        {error && <p style={s.errorBox}>{error}</p>}
+        <div style={{ display: "flex", gap: "12px" }}>
+          <div style={{ ...s.field, flex: 1 }}>
+            <label style={s.label}>Von</label>
+            <input type="time" style={s.input} value={from} onChange={e => setFrom(e.target.value)} />
+          </div>
+          <div style={{ ...s.field, flex: 1 }}>
+            <label style={s.label}>Bis</label>
+            <input type="time" style={s.input} value={till} onChange={e => setTill(e.target.value)} />
+          </div>
+        </div>
+        <div style={s.modalBtns}>
+          <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+          <button style={s.confirmBtn} onClick={handleSave} disabled={loading}>
+            {loading ? "..." : "Speichern"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Admin Component ──────────────────────────────────────────────────────
 
 export default function Admin({ user, onLogout }) {
@@ -271,6 +328,7 @@ export default function Admin({ user, onLogout }) {
   const [showAddUser,      setShowAddUser]      = useState(false);
   const [showMonthlyExport, setShowMonthlyExport] = useState(false);
   const [resetUser,        setResetUser]        = useState(null);
+  const [lunchEntry,       setLunchEntry]       = useState(null); // entry object for lunch modal
   const [loading,       setLoading]       = useState(true);
   const [page,          setPage]          = useState("admin"); // "admin" | "dienstplan"
   const touchStartX                       = useRef(null);
@@ -508,13 +566,26 @@ export default function Admin({ user, onLogout }) {
                                       <span style={s.entryDur}>{formatDuration(e.duration_minutes)}</span>
                                     )}
                                   </div>
+                                  {e.lunch_start && e.lunch_end && (
+                                    <p style={s.entryLunch}>
+                                      ☕ {formatTime(e.lunch_start)} – {formatTime(e.lunch_end)}
+                                    </p>
+                                  )}
                                   {e.note && <p style={s.entryNote}>"{e.note}"</p>}
-                                  <button
-                                    style={s.deleteBtn}
-                                    onClick={() => handleDeleteEntry(e.id)}
-                                  >
-                                    Löschen
-                                  </button>
+                                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                                    <button
+                                      style={s.lunchEntryBtn}
+                                      onClick={() => setLunchEntry(e)}
+                                    >
+                                      ☕ Pause eintragen
+                                    </button>
+                                    <button
+                                      style={s.deleteBtn}
+                                      onClick={() => handleDeleteEntry(e.id)}
+                                    >
+                                      Löschen
+                                    </button>
+                                  </div>
                                 </div>
                               ))
                             )}
@@ -574,6 +645,13 @@ export default function Admin({ user, onLogout }) {
         <ResetPasswordModal
           user={resetUser}
           onClose={() => setResetUser(null)}
+        />
+      )}
+      {lunchEntry && (
+        <AdminLunchModal
+          entry={lunchEntry}
+          onClose={() => setLunchEntry(null)}
+          onSaved={() => { setLunchEntry(null); fetchAll(); }}
         />
       )}
     </div>
@@ -736,6 +814,13 @@ const s = {
   entryTime:  { fontSize: "13px", color: TEXT },
   entryDur:   { fontSize: "12px", color: ORANGE },
   entryNote:  { margin: 0, fontSize: "11px", color: MUTED, fontStyle: "italic" },
+  entryLunch: { margin: 0, fontSize: "11px", color: MUTED },
+  lunchEntryBtn: {
+    background: "none",
+    border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "4px 10px", fontSize: "10px", color: MUTED,
+    cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.06em",
+  },
   deleteBtn: {
     alignSelf: "flex-end", background: "none",
     border: `1px solid rgba(255,80,80,0.2)`, borderRadius: "3px",

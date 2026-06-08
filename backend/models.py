@@ -27,7 +27,9 @@ class TimeEntry(Base):
     punch_in = Column(DateTime(timezone=True), nullable=False)
     punch_out = Column(DateTime(timezone=True), nullable=True)  # null = currently active
     duration_minutes = Column(Integer, nullable=True)
-    note = Column(String, nullable=True)  # optional note added on punch-out
+    note        = Column(String, nullable=True)
+    lunch_start = Column(DateTime(timezone=True), nullable=True)
+    lunch_end   = Column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User", back_populates="time_entries")
 
