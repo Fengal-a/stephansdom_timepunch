@@ -10,7 +10,9 @@ dependencies = [
     "fastapi[standard]",
     "sqlalchemy",
     "uvicorn",
-    "email-validator",   # required for Pydantic's EmailStr
+    "email-validator",
+    "pyjwt",
+    "slowapi",
 ]
 
 [tool.fastapi]
