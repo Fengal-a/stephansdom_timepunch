@@ -527,12 +527,13 @@ export default function Admin({ user, onLogout }) {
                   src="/cathedral.png" alt="Stephansdom" style={{ ...s.logo, cursor: subPage !== "overview" ? "pointer" : "default" }}
                   onClick={() => setSubPage("overview")}
                 />
-                <button style={s.adminBadge} onClick={() => setSubPage("overview")}>
-                  {subPage === "overview" ? "ADMIN" : "← Home"}
-                </button>
+                <span style={s.adminBadge}>ADMIN</span>
               </div>
               <div style={s.headerRight}>
-                <span style={s.userName}>{user.name}</span>
+                <button
+                  style={{ ...s.logoutBtn, ...(subPage === "overview" ? s.logoutBtnActive : {}) }}
+                  onClick={() => setSubPage("overview")}
+                >Home</button>
                 <button
                   style={{ ...s.logoutBtn, ...(subPage === "mitarbeiter" ? s.logoutBtnActive : {}) }}
                   onClick={() => setSubPage(subPage === "mitarbeiter" ? "overview" : "mitarbeiter")}
@@ -862,7 +863,7 @@ const s = {
   adminBadge: {
     fontSize: "9px", fontWeight: "700", letterSpacing: "0.15em",
     background: ORANGE, color: "#fff", padding: "2px 6px", borderRadius: "2px",
-    whiteSpace: "nowrap", border: "none", cursor: "pointer", fontFamily: "inherit",
+    whiteSpace: "nowrap",
   },
   editBtn: {
     background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
@@ -875,7 +876,7 @@ const s = {
   logoutBtn: {
     background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
     padding: "5px 8px", fontSize: "11px", color: MUTED, cursor: "pointer",
-    fontFamily: "inherit", whiteSpace: "nowrap",
+    fontFamily: "inherit", whiteSpace: "nowrap", outline: "none",
   },
   logoutBtnActive: {
     borderColor: ORANGE, color: ORANGE,
