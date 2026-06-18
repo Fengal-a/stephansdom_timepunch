@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY pyproject.toml .
-RUN pip install --no-cache-dir "." psycopg2-binary bcrypt
+RUN pip install --no-cache-dir ".[standard]" psycopg2-binary bcrypt
 
 # Copy source
 COPY backend/ ./backend/
