@@ -34,10 +34,11 @@ def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
 
 
-def create_token(user_id: int, is_admin: bool) -> str:
+def create_token(user_id: int, is_admin: bool, token_version: int) -> str:
     payload = {
         "sub": str(user_id),
         "is_admin": is_admin,
+        "tv": token_version,
         "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
@@ -62,6 +63,8 @@ def get_current_user(
     user = db.query(User).filter(User.id == int(payload["sub"])).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    if payload.get("tv") != user.token_version:
+        raise HTTPException(status_code=401, detail="Session expired")
     return user
 
 
@@ -84,7 +87,16 @@ def login(
     if not user or not verify_password(form.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    token = create_token(user.id, user.is_admin)
+    now = datetime.now(timezone.utc)
+    if user.last_login_at is not None:
+        session_expires = user.last_login_at + timedelta(hours=TOKEN_EXPIRE_HOURS)
+        if session_expires > now:
+            raise HTTPException(status_code=409, detail="Der Account wird bereits verwendet.")
+
+    user.token_version += 1
+    user.last_login_at = now
+    db.commit()
+    token = create_token(user.id, user.is_admin, user.token_version)
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -94,6 +106,14 @@ def login(
             "is_admin": user.is_admin,
         },
     }
+
+
+@router.post("/logout")
+def logout(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    current_user.last_login_at = None
+    current_user.token_version += 1
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/me", response_model=UserOut)

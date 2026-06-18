@@ -70,6 +70,31 @@ def reset_user_password(
     return {"ok": True}
 
 
+@router.put("/users/{user_id}")
+def update_user(
+    user_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if "name" in payload:
+        user.name = payload["name"].strip()
+    if "username" in payload:
+        new_username = payload["username"].strip().lower()
+        conflict = db.query(User).filter(User.username == new_username, User.id != user_id).first()
+        if conflict:
+            raise HTTPException(status_code=409, detail="Benutzername bereits vergeben")
+        user.username = new_username
+    if "is_active" in payload:
+        user.is_active = bool(payload["is_active"])
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 @router.delete("/users/{user_id}")
 def delete_user(
     user_id: int,

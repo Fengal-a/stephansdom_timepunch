@@ -26,7 +26,7 @@ export default function Login({ onLogin }) {
           throw new Error("Zu viele Anmeldeversuche. Bitte warten Sie einen Moment.");
         }
         const data = await res.json();
-        throw new Error(data.detail ?? "Login failed");
+        throw new Error(data.detail ?? "Anmeldung fehlgeschlagen.");
       }
 
       const data = await res.json();

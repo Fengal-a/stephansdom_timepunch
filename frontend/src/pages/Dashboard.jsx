@@ -353,16 +353,13 @@ export default function Dashboard({ user, onLogout }) {
             <textarea
               ref={noteRef}
               style={s.textarea}
-              placeholder="z.B. Mittagspause, Überstunden..."
+              placeholder="(Notiz hinzufügen)"
               value={note}
               onChange={e => setNote(e.target.value)}
               rows={3}
             />
             <button style={s.confirmBtn} onClick={() => doPunch(note)}>
               AUSSTEMPELN
-            </button>
-            <button style={s.skipBtn} onClick={() => doPunch(null)}>
-              Ohne Notiz ausstempeln
             </button>
             <button style={s.cancelBtn} onClick={() => setShowNote(false)}>
               Abbrechen

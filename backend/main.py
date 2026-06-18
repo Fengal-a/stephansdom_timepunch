@@ -94,13 +94,13 @@ async def office_network_restriction(request: Request, call_next):
 
     return JSONResponse(
         status_code=403,
-        content={"detail": "Zugriff nur im Büronetzwerk erlaubt."},
+        content={"detail": "Zugriff nur im Sakristeinetzwerk erlaubt."},
     )
 
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://app.stephansdom.at"],
+    allow_origins=["http://localhost:5173", "https://stephansdom.at"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

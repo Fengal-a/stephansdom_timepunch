@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+
+const API = import.meta.env.VITE_API_URL ?? "";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Admin from "./pages/Admin";
@@ -17,7 +19,14 @@ export default function App() {
     setUser(userData);
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    const token = localStorage.getItem("token");
+    if (token) {
+      fetch(`${API}/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setUser(null);

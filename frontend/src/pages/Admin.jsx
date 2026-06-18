@@ -260,6 +260,104 @@ function ResetPasswordModal({ user: targetUser, onClose }) {
   );
 }
 
+// ── Edit User Modal ───────────────────────────────────────────────────────────
+
+function EditUserModal({ user: targetUser, onClose, onSaved }) {
+  const [form,     setForm]     = useState({ name: targetUser.name, username: targetUser.username, is_active: targetUser.is_active });
+  const [password, setPassword] = useState("");
+  const [error,    setError]    = useState("");
+  const [pwError,  setPwError]  = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [pwLoading,setPwLoading]= useState(false);
+  const [pwSaved,  setPwSaved]  = useState(false);
+
+  async function handleSave() {
+    if (!form.name.trim() || !form.username.trim()) { setError("Name und Benutzername sind erforderlich"); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch(`${API}/admin/users/${targetUser.id}`, {
+        method: "PUT", headers: authHeaders(),
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail); }
+      onSaved();
+      onClose();
+    } catch(e) { setError(e.message); }
+    setLoading(false);
+  }
+
+  async function handlePasswordSave() {
+    if (password.length < 4) { setPwError("Mindestens 4 Zeichen"); return; }
+    setPwLoading(true); setPwError("");
+    try {
+      const res = await fetch(`${API}/admin/users/${targetUser.id}/password`, {
+        method: "PUT", headers: authHeaders(),
+        body: JSON.stringify({ password }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail); }
+      setPwSaved(true); setPassword("");
+      setTimeout(() => setPwSaved(false), 2000);
+    } catch(e) { setPwError(e.message); }
+    setPwLoading(false);
+  }
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={e => e.stopPropagation()}>
+        <p style={s.modalTitle}>{targetUser.name}</p>
+        {error && <p style={s.errorBox}>{error}</p>}
+        {[
+          { key: "name",     label: "Name",         type: "text" },
+          { key: "username", label: "Benutzername",  type: "text" },
+        ].map(f => (
+          <div key={f.key} style={s.field}>
+            <label style={s.label}>{f.label}</label>
+            <input
+              style={s.input} type={f.type}
+              value={form[f.key]}
+              onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
+            />
+          </div>
+        ))}
+        <div style={s.checkRow}>
+          <input
+            id="edit_active" type="checkbox" checked={form.is_active}
+            onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))}
+          />
+          <label htmlFor="edit_active" style={{ ...s.label, margin: 0 }}>Aktiv</label>
+        </div>
+
+        <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
+          <label style={s.label}>Passwort zurücksetzen</label>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <input
+              style={{ ...s.input, flex: 1 }} type="password" placeholder="Neues Passwort"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handlePasswordSave()}
+            />
+            <button
+              style={{ ...s.confirmBtn, flex: "none", padding: "0 14px", minWidth: "72px" }}
+              onClick={handlePasswordSave}
+              disabled={pwLoading || !password}
+            >
+              {pwLoading ? "..." : pwSaved ? "✓" : "Setzen"}
+            </button>
+          </div>
+          {pwError && <p style={{ margin: 0, fontSize: "11px", color: ORANGE }}>{pwError}</p>}
+        </div>
+
+        <div style={s.modalBtns}>
+          <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+          <button style={s.confirmBtn} onClick={handleSave} disabled={loading}>
+            {loading ? "..." : "Speichern"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Admin Lunch Modal ─────────────────────────────────────────────────────────
 
 function AdminLunchModal({ entry, onClose, onSaved }) {
@@ -328,9 +426,11 @@ export default function Admin({ user, onLogout }) {
   const [showAddUser,      setShowAddUser]      = useState(false);
   const [showMonthlyExport, setShowMonthlyExport] = useState(false);
   const [resetUser,        setResetUser]        = useState(null);
-  const [lunchEntry,       setLunchEntry]       = useState(null); // entry object for lunch modal
+  const [lunchEntry,       setLunchEntry]       = useState(null);
+  const [editUser,         setEditUser]         = useState(null);
   const [loading,       setLoading]       = useState(true);
   const [page,          setPage]          = useState("admin"); // "admin" | "dienstplan"
+  const [subPage,       setSubPage]       = useState("overview"); // "overview" | "mitarbeiter"
   const touchStartX                       = useRef(null);
 
   useEffect(() => { fetchAll(); }, []);
@@ -428,12 +528,46 @@ export default function Admin({ user, onLogout }) {
               </div>
               <div style={s.headerRight}>
                 <span style={s.userName}>{user.name}</span>
+                <button
+                  style={{ ...s.logoutBtn, ...(subPage === "mitarbeiter" ? s.logoutBtnActive : {}) }}
+                  onClick={() => setSubPage(subPage === "mitarbeiter" ? "overview" : "mitarbeiter")}
+                >Mitarbeiter</button>
                 <button style={s.logoutBtn} onClick={() => setPage("dienstplan")}>Dienstplan</button>
                 <button style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
               </div>
             </header>
 
             <main style={s.main}>
+
+              {/* ── Mitarbeiter list view ── */}
+              {subPage === "mitarbeiter" && (
+                <section style={s.section}>
+                  <div style={s.sectionHeader}>
+                    <p style={s.sectionTitle}>MITARBEITER</p>
+                    <span style={s.badge}>{users.filter(u => !u.is_admin).length}</span>
+                  </div>
+                  {users.filter(u => !u.is_admin).map(u => {
+                    const isClocked = activeUserIds.has(u.id);
+                    const statusLabel = !u.is_active ? "Inaktiv" : isClocked ? "Eingestempelt" : "Ausgestempelt";
+                    const statusColor = !u.is_active ? MUTED : isClocked ? GREEN : MUTED;
+                    return (
+                      <div key={u.id} style={s.mitarbeiterRow} onClick={() => setEditUser(u)}>
+                        <div>
+                          <div style={s.userNameCell}>{u.name}</div>
+                          <div style={s.userUsername}>@{u.username}</div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          {isClocked && <span style={s.activeDot} />}
+                          <span style={{ fontSize: "12px", color: statusColor }}>{statusLabel}</span>
+                          <span style={{ fontSize: "12px", color: MUTED }}>›</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </section>
+              )}
+
+              {subPage === "overview" && <>
 
               {/* ── Inbox ── */}
               <section style={s.section}>
@@ -616,6 +750,9 @@ export default function Admin({ user, onLogout }) {
                   })
                 )}
               </section>
+
+              </>}
+
             </main>
 
           </div>
@@ -652,6 +789,13 @@ export default function Admin({ user, onLogout }) {
           entry={lunchEntry}
           onClose={() => setLunchEntry(null)}
           onSaved={() => { setLunchEntry(null); fetchAll(); }}
+        />
+      )}
+      {editUser && (
+        <EditUserModal
+          user={editUser}
+          onClose={() => setEditUser(null)}
+          onSaved={fetchAll}
         />
       )}
     </div>
@@ -717,6 +861,14 @@ const s = {
     background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
     padding: "5px 8px", fontSize: "11px", color: MUTED, cursor: "pointer",
     fontFamily: "inherit", whiteSpace: "nowrap",
+  },
+  logoutBtnActive: {
+    borderColor: ORANGE, color: ORANGE,
+  },
+  mitarbeiterRow: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "14px 16px", borderBottom: `1px solid ${BORDER}`,
+    cursor: "pointer",
   },
   main: {
     position: "relative", zIndex: 1, flex: 1,
