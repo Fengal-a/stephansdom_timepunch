@@ -523,8 +523,13 @@ export default function Admin({ user, onLogout }) {
             {/* Header */}
             <header style={s.header}>
               <div style={s.brand}>
-                <img src="/cathedral.png" alt="Stephansdom" style={s.logo} />
-                <span style={s.adminBadge}>ADMIN</span>
+                <img
+                  src="/cathedral.png" alt="Stephansdom" style={{ ...s.logo, cursor: subPage !== "overview" ? "pointer" : "default" }}
+                  onClick={() => setSubPage("overview")}
+                />
+                <button style={s.adminBadge} onClick={() => setSubPage("overview")}>
+                  {subPage === "overview" ? "ADMIN" : "← Home"}
+                </button>
               </div>
               <div style={s.headerRight}>
                 <span style={s.userName}>{user.name}</span>
@@ -551,15 +556,19 @@ export default function Admin({ user, onLogout }) {
                     const statusLabel = !u.is_active ? "Inaktiv" : isClocked ? "Eingestempelt" : "Ausgestempelt";
                     const statusColor = !u.is_active ? MUTED : isClocked ? GREEN : MUTED;
                     return (
-                      <div key={u.id} style={s.mitarbeiterRow} onClick={() => setEditUser(u)}>
-                        <div>
-                          <div style={s.userNameCell}>{u.name}</div>
-                          <div style={s.userUsername}>@{u.username}</div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div key={u.id} style={s.mitarbeiterRow}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                           {isClocked && <span style={s.activeDot} />}
+                          <div>
+                            <div style={s.userNameCell}>{u.name}</div>
+                            <div style={s.userUsername}>@{u.username}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                           <span style={{ fontSize: "12px", color: statusColor }}>{statusLabel}</span>
-                          <span style={{ fontSize: "12px", color: MUTED }}>›</span>
+                          <button style={s.editBtn} onClick={() => setEditUser(u)}>
+                            ↺ Stammdaten ändern
+                          </button>
                         </div>
                       </div>
                     );
@@ -853,6 +862,12 @@ const s = {
   adminBadge: {
     fontSize: "9px", fontWeight: "700", letterSpacing: "0.15em",
     background: ORANGE, color: "#fff", padding: "2px 6px", borderRadius: "2px",
+    whiteSpace: "nowrap", border: "none", cursor: "pointer", fontFamily: "inherit",
+  },
+  editBtn: {
+    background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "5px 10px", fontSize: "11px", color: MUTED,
+    cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.04em",
     whiteSpace: "nowrap",
   },
   headerRight: { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" },
