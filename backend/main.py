@@ -100,7 +100,7 @@ async def office_network_restriction(request: Request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://stephansdom.at"],
+    allow_origins=["http://localhost:5173", "https://domstempel.at"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

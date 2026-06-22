@@ -91,8 +91,6 @@ Step 4 — Build and start all containers
      backend   — FastAPI API server
      frontend  — React app served by nginx (also proxies API calls)
 
-   The app will be available at http://<your-server-ip>
-
 Step 5 — Seed the production database (first time only)
    docker compose exec backend python -m backend.seed
 
