@@ -4,6 +4,7 @@ A workforce time-tracking app built with FastAPI (backend) and React/Vite (front
 Employees can punch in/out, view their schedule (Dienstplan), and message admins.
 Admins can manage employees, view time entries, export CSV reports, and read messages.
 
+#167.233.38.229 SERVER
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 LOCAL DEVELOPMENT (laptop)

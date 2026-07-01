@@ -49,13 +49,16 @@ function exportCSV(entries, users) {
 // ── Add User Modal ────────────────────────────────────────────────────────────
 
 function AddUserModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ name: "", username: "", password: "", is_admin: false });
+  const [form, setForm] = useState({ name: "", username: "", password: "", email: "", is_admin: false });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit() {
-    if (!form.name || !form.username || !form.password) {
-      setError("Alle Felder sind erforderlich"); return;
+    if (!form.name || !form.username) {
+      setError("Name und Benutzername sind erforderlich"); return;
+    }
+    if (!form.password && !form.email) {
+      setError("Passwort oder E-Mail-Adresse erforderlich"); return;
     }
     setLoading(true); setError("");
     try {
@@ -76,9 +79,10 @@ function AddUserModal({ onClose, onCreated }) {
         <p style={s.modalTitle}>Neuer Mitarbeiter</p>
         {error && <p style={s.errorBox}>{error}</p>}
         {[
-          { key: "name",     label: "Name",         type: "text",     placeholder: "Max Mustermann" },
-          { key: "username", label: "Benutzername",  type: "text",     placeholder: "mustermann" },
-          { key: "password", label: "Passwort",      type: "password", placeholder: "••••••••" },
+          { key: "name",     label: "Name",           type: "text",     placeholder: "Max Mustermann" },
+          { key: "username", label: "Benutzername",    type: "text",     placeholder: "mustermann" },
+          { key: "email",    label: "E-Mail (Einladung senden)", type: "email", placeholder: "max@beispiel.at" },
+          { key: "password", label: "Passwort (oder leer lassen wenn E-Mail angegeben)", type: "password", placeholder: "••••••••" },
         ].map(f => (
           <div key={f.key} style={s.field}>
             <label style={s.label}>{f.label}</label>
@@ -263,7 +267,7 @@ function ResetPasswordModal({ user: targetUser, onClose }) {
 // ── Edit User Modal ───────────────────────────────────────────────────────────
 
 function EditUserModal({ user: targetUser, onClose, onSaved }) {
-  const [form,     setForm]     = useState({ name: targetUser.name, username: targetUser.username, is_active: targetUser.is_active });
+  const [form,     setForm]     = useState({ name: targetUser.name, username: targetUser.username, email: targetUser.email ?? "", is_active: targetUser.is_active });
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
   const [pwError,  setPwError]  = useState("");
@@ -307,8 +311,9 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
         <p style={s.modalTitle}>{targetUser.name}</p>
         {error && <p style={s.errorBox}>{error}</p>}
         {[
-          { key: "name",     label: "Name",         type: "text" },
-          { key: "username", label: "Benutzername",  type: "text" },
+          { key: "name",     label: "Name",          type: "text"  },
+          { key: "username", label: "Benutzername",   type: "text"  },
+          { key: "email",    label: "E-Mail",         type: "email" },
         ].map(f => (
           <div key={f.key} style={s.field}>
             <label style={s.label}>{f.label}</label>

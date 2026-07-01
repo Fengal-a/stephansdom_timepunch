@@ -6,12 +6,14 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 import os
+import secrets
 import jwt
 import bcrypt
 
 from ..database import get_db
 from ..models import User
 from ..schemas import UserOut
+from ..email_utils import send_reset_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 limiter = Limiter(key_func=get_remote_address)
@@ -119,3 +121,40 @@ def logout(current_user: User = Depends(get_current_user), db: Session = Depends
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.post("/forgot-password")
+def forgot_password(payload: dict, db: Session = Depends(get_db)):
+    email = (payload.get("email") or "").strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+    if user:
+        token = secrets.token_urlsafe(32)
+        user.password_reset_token   = token
+        user.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+        db.commit()
+        try:
+            send_reset_email(user.email, user.name, token)
+        except Exception:
+            pass
+    # Always return ok — don't reveal whether the email exists
+    return {"ok": True}
+
+
+@router.post("/reset-password")
+def reset_password(payload: dict, db: Session = Depends(get_db)):
+    token    = (payload.get("token") or "").strip()
+    password = (payload.get("password") or "").strip()
+    if not token or len(password) < 4:
+        raise HTTPException(status_code=400, detail="Ungültige Anfrage")
+    user = db.query(User).filter(User.password_reset_token == token).first()
+    if not user or not user.password_reset_expires:
+        raise HTTPException(status_code=400, detail="Ungültiger oder abgelaufener Link")
+    if user.password_reset_expires < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Dieser Link ist abgelaufen")
+    user.password_hash           = hash_password(password)
+    user.password_reset_token    = None
+    user.password_reset_expires  = None
+    user.token_version          += 1
+    user.last_login_at           = None
+    db.commit()
+    return {"ok": True}

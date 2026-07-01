@@ -14,9 +14,11 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     is_admin = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
-    token_version = Column(Integer, default=0, nullable=False, server_default="0")
-    last_login_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    token_version          = Column(Integer, default=0, nullable=False, server_default="0")
+    last_login_at          = Column(DateTime(timezone=True), nullable=True)
+    password_reset_token   = Column(String, nullable=True)
+    password_reset_expires = Column(DateTime(timezone=True), nullable=True)
+    created_at             = Column(DateTime(timezone=True), server_default=func.now())
 
     time_entries = relationship("TimeEntry", back_populates="user")
 

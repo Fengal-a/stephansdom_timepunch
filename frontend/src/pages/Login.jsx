@@ -2,7 +2,7 @@ import { useState } from "react";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, onForgot }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState("");
@@ -100,9 +100,9 @@ export default function Login({ onLogin }) {
             )}
           </button>
 
-          <p style={styles.forgotHint}>
-            Passwort vergessen? Bitte wenden Sie sich an Ihren Administrator.
-          </p>
+          <button type="button" style={styles.forgotLink} onClick={onForgot}>
+            Passwort vergessen?
+          </button>
         </form>
       </div>
 
@@ -248,12 +248,17 @@ const styles = {
     display: "inline-block",
     animation: "spin 0.7s linear infinite",
   },
-  forgotHint: {
-    margin: 0,
-    fontSize: "11px",
+  forgotLink: {
+    background: "none",
+    border: "none",
+    padding: 0,
+    fontSize: "12px",
     color: MUTED,
     textAlign: "center",
-    lineHeight: "1.5",
+    cursor: "pointer",
+    fontFamily: "'DM Mono', 'Courier New', monospace",
+    textDecoration: "underline",
+    alignSelf: "center",
   },
   footer: {
     position: "relative",

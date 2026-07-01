@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List
 import bcrypt
+import secrets
 import shutil
 import csv
 import io
@@ -13,6 +14,7 @@ from ..database import get_db
 from ..models import User, TimeEntry
 from ..schemas import UserOut, TimeEntryOut, UserCreate, LunchRequest
 from .auth import require_admin, get_current_user
+from ..email_utils import send_invite_email
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -36,19 +38,39 @@ def create_user(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
+    if not payload.password and not payload.email:
+        raise HTTPException(status_code=400, detail="Passwort oder E-Mail-Adresse erforderlich")
     existing = db.query(User).filter(User.username == payload.username.lower()).first()
     if existing:
         raise HTTPException(status_code=409, detail="Benutzername bereits vergeben")
-    hashed = bcrypt.hashpw(payload.password.encode(), bcrypt.gensalt()).decode()
+    if payload.email:
+        email_conflict = db.query(User).filter(User.email == payload.email.lower()).first()
+        if email_conflict:
+            raise HTTPException(status_code=409, detail="E-Mail-Adresse bereits vergeben")
+
+    raw_pw = payload.password or secrets.token_urlsafe(16)
+    hashed = bcrypt.hashpw(raw_pw.encode(), bcrypt.gensalt()).decode()
     user = User(
         name=payload.name,
         username=payload.username.lower(),
+        email=payload.email.lower() if payload.email else None,
         password_hash=hashed,
         is_admin=payload.is_admin,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    if payload.email:
+        token = secrets.token_urlsafe(32)
+        user.password_reset_token   = token
+        user.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=48)
+        db.commit()
+        try:
+            send_invite_email(user.email, user.name, token)
+        except Exception:
+            pass
+
     return user
 
 
@@ -88,6 +110,13 @@ def update_user(
         if conflict:
             raise HTTPException(status_code=409, detail="Benutzername bereits vergeben")
         user.username = new_username
+    if "email" in payload:
+        new_email = (payload["email"] or "").strip().lower() or None
+        if new_email:
+            conflict = db.query(User).filter(User.email == new_email, User.id != user_id).first()
+            if conflict:
+                raise HTTPException(status_code=409, detail="E-Mail-Adresse bereits vergeben")
+        user.email = new_email
     if "is_active" in payload:
         user.is_active = bool(payload["is_active"])
     db.commit()

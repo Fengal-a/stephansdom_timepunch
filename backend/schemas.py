@@ -8,7 +8,8 @@ from typing import Optional
 class UserCreate(BaseModel):
     name: str
     username: str
-    password: str
+    password: Optional[str] = None
+    email: Optional[str] = None
     is_admin: bool = False
 
 
@@ -16,6 +17,7 @@ class UserOut(BaseModel):
     id: int
     name: str
     username: str
+    email: Optional[str] = None
     is_admin: bool
     is_active: bool
     created_at: datetime
