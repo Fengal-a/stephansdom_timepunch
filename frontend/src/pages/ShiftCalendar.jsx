@@ -163,8 +163,9 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
 
   function selectSuggestion(item) {
     setSuggestions([]);
-    setEditingCell(null);
-    saveCell(editingCell.date, editingCell.role, item.username);
+    setSuggIdx(-1);
+    setEditValue(item.displayName);
+    // editor stays open — user clicks ✓ to confirm
   }
 
   function commitEdit() {
@@ -189,8 +190,15 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
     if (e.key === "ArrowUp")   { e.preventDefault(); setSuggIdx(i => Math.max(i - 1, 0)); }
     if (e.key === "Enter") {
       e.preventDefault();
-      if (suggIdx >= 0 && suggestions[suggIdx]) selectSuggestion(suggestions[suggIdx]);
-      else { commitEdit(); }
+      if (suggIdx >= 0 && suggestions[suggIdx]) {
+        // keyboard: arrow-select + Enter saves immediately
+        const sel = suggestions[suggIdx];
+        setSuggestions([]);
+        saveCell(editingCell.date, editingCell.role, sel.username);
+        setEditingCell(null);
+      } else {
+        commitEdit();
+      }
     }
     if (e.key === "Escape") { cancelEdit(); }
   }
