@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -38,14 +38,22 @@ class TimeEntry(Base):
     user = relationship("User", back_populates="time_entries")
 
 
-class ShiftEvent(Base):
-    __tablename__ = "shift_events"
+class ShiftCell(Base):
+    __tablename__ = "shift_cells"
+    __table_args__ = (UniqueConstraint("date", "role", name="uq_shift_cell"),)
+
+    id          = Column(Integer, primary_key=True, index=True)
+    date        = Column(Date, nullable=False, index=True)
+    role        = Column(String, nullable=False)
+    worker_name = Column(String, nullable=True)
+
+
+class WeekNote(Base):
+    __tablename__ = "week_notes"
 
     id         = Column(Integer, primary_key=True, index=True)
-    date       = Column(Date, nullable=False, index=True)
-    title      = Column(String, nullable=False)
-    color      = Column(String, nullable=False, server_default="'#F5620F'")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    week_start = Column(Date, nullable=False, unique=True)
+    note       = Column(String, nullable=True)
 
 
 class Message(Base):

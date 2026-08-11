@@ -3,8 +3,11 @@ import { useState } from "react";
 const API = import.meta.env.VITE_API_URL ?? "";
 
 export default function ResetPassword({ onDone }) {
-  const token = new URLSearchParams(window.location.search).get("token") ?? "";
+  const params   = new URLSearchParams(window.location.search);
+  const token    = params.get("token") ?? "";
+  const isInvite = params.get("invite") === "1";
 
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm,  setConfirm]  = useState("");
   const [error,    setError]    = useState("");
@@ -13,6 +16,7 @@ export default function ResetPassword({ onDone }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (isInvite && username.length < 3) { setError("Benutzername muss mindestens 3 Zeichen haben"); return; }
     if (password !== confirm) { setError("Passwörter stimmen nicht überein"); return; }
     if (password.length < 4)  { setError("Mindestens 4 Zeichen erforderlich"); return; }
     setLoading(true); setError("");
@@ -20,7 +24,7 @@ export default function ResetPassword({ onDone }) {
       const res = await fetch(`${API}/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token, password, ...(isInvite ? { username } : {}) }),
       });
       if (res.ok) {
         setDone(true);
@@ -42,7 +46,7 @@ export default function ResetPassword({ onDone }) {
           <img src="/cathedral.png" alt="Stephansdom" style={s.logo} />
         </div>
 
-        <h1 style={s.heading}>Neues Passwort</h1>
+        <h1 style={s.heading}>{isInvite ? "Konto einrichten" : "Neues Passwort"}</h1>
 
         {done ? (
           <>
@@ -56,8 +60,19 @@ export default function ResetPassword({ onDone }) {
           </>
         ) : (
           <>
-            <p style={s.sub}>Wählen Sie ein neues Passwort.</p>
+            <p style={s.sub}>{isInvite ? "Wählen Sie Ihren Benutzernamen und ein Passwort." : "Wählen Sie ein neues Passwort."}</p>
             <form onSubmit={handleSubmit} style={s.form}>
+              {isInvite && (
+                <div style={s.field}>
+                  <label style={s.label} htmlFor="uname">Benutzername</label>
+                  <input
+                    id="uname" style={s.input} type="text"
+                    autoComplete="username" placeholder="max.mustermann"
+                    value={username} onChange={e => setUsername(e.target.value.toLowerCase())}
+                    required disabled={loading} autoFocus
+                  />
+                </div>
+              )}
               <div style={s.field}>
                 <label style={s.label} htmlFor="pw">Neues Passwort</label>
                 <input

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List
 import bcrypt
 import secrets
+import re
 import shutil
 import csv
 import io
@@ -20,6 +21,23 @@ UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def _generate_username(name: str) -> str:
+    result = name.lower()
+    for char, repl in {'ä':'ae','ö':'oe','ü':'ue','ß':'ss'}.items():
+        result = result.replace(char, repl)
+    result = re.sub(r'[^a-z0-9\s]', '', result)
+    result = re.sub(r'\s+', '.', result.strip())
+    return result or "user"
+
+
+def _unique_username(db: Session, base: str) -> str:
+    username, counter = base, 2
+    while db.query(User).filter(User.username == username).first():
+        username = f"{base}{counter}"
+        counter += 1
+    return username
 
 
 # ── Users ─────────────────────────────────────────────────────────────────────
@@ -38,21 +56,28 @@ def create_user(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    if not payload.password and not payload.email:
-        raise HTTPException(status_code=400, detail="Passwort oder E-Mail-Adresse erforderlich")
-    existing = db.query(User).filter(User.username == payload.username.lower()).first()
-    if existing:
+    if not payload.email and not payload.password:
+        raise HTTPException(status_code=400, detail="E-Mail oder Passwort erforderlich")
+
+    # Resolve username: use provided, or auto-generate from name for invite flow
+    if payload.username:
+        username = payload.username.strip().lower()
+    elif payload.email:
+        username = _unique_username(db, _generate_username(payload.name))
+    else:
+        raise HTTPException(status_code=400, detail="Benutzername erforderlich")
+
+    if db.query(User).filter(User.username == username).first():
         raise HTTPException(status_code=409, detail="Benutzername bereits vergeben")
     if payload.email:
-        email_conflict = db.query(User).filter(User.email == payload.email.lower()).first()
-        if email_conflict:
+        if db.query(User).filter(User.email == payload.email.lower()).first():
             raise HTTPException(status_code=409, detail="E-Mail-Adresse bereits vergeben")
 
     raw_pw = payload.password or secrets.token_urlsafe(16)
     hashed = bcrypt.hashpw(raw_pw.encode(), bcrypt.gensalt()).decode()
     user = User(
         name=payload.name,
-        username=payload.username.lower(),
+        username=username,
         email=payload.email.lower() if payload.email else None,
         password_hash=hashed,
         is_admin=payload.is_admin,
@@ -117,8 +142,8 @@ def update_user(
             if conflict:
                 raise HTTPException(status_code=409, detail="E-Mail-Adresse bereits vergeben")
         user.email = new_email
-    if "is_active" in payload:
-        user.is_active = bool(payload["is_active"])
+    if "is_admin" in payload:
+        user.is_admin = bool(payload["is_admin"])
     db.commit()
     db.refresh(user)
     return user

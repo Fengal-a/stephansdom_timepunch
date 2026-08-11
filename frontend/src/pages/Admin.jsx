@@ -50,16 +50,17 @@ function exportCSV(entries, users) {
 // ── Add User Modal ────────────────────────────────────────────────────────────
 
 function AddUserModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ name: "", username: "", password: "", email: "", is_admin: false });
+  const [form, setForm] = useState({ name: "", email: "", password: "", is_admin: false });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const inviteMode = form.email.trim().length > 0;
 
   async function handleSubmit() {
-    if (!form.name || !form.username) {
-      setError("Name und Benutzername sind erforderlich"); return;
+    if (!form.name.trim()) {
+      setError("Name ist erforderlich"); return;
     }
-    if (!form.password && !form.email) {
-      setError("Passwort oder E-Mail-Adresse erforderlich"); return;
+    if (!form.email.trim() && !form.password.trim()) {
+      setError("E-Mail (Einladung) oder Passwort erforderlich"); return;
     }
     setLoading(true); setError("");
     try {
@@ -80,10 +81,9 @@ function AddUserModal({ onClose, onCreated }) {
         <p style={s.modalTitle}>Neuer Mitarbeiter</p>
         {error && <p style={s.errorBox}>{error}</p>}
         {[
-          { key: "name",     label: "Name",           type: "text",     placeholder: "Max Mustermann" },
-          { key: "username", label: "Benutzername",    type: "text",     placeholder: "mustermann" },
-          { key: "email",    label: "E-Mail (Einladung senden)", type: "email", placeholder: "max@beispiel.at" },
-          { key: "password", label: "Passwort (oder leer lassen wenn E-Mail angegeben)", type: "password", placeholder: "••••••••" },
+          { key: "name",     label: "Name",                                        type: "text",     placeholder: "Max Mustermann" },
+          { key: "email",    label: "E-Mail — Einladung senden (empfohlen)",        type: "email",    placeholder: "max@beispiel.at" },
+          { key: "password", label: inviteMode ? "Passwort (optional bei Einladung)" : "Passwort", type: "password", placeholder: "••••••••" },
         ].map(f => (
           <div key={f.key} style={s.field}>
             <label style={s.label}>{f.label}</label>
@@ -268,7 +268,7 @@ function ResetPasswordModal({ user: targetUser, onClose }) {
 // ── Edit User Modal ───────────────────────────────────────────────────────────
 
 function EditUserModal({ user: targetUser, onClose, onSaved }) {
-  const [form,     setForm]     = useState({ name: targetUser.name, username: targetUser.username, email: targetUser.email ?? "", is_active: targetUser.is_active });
+  const [form,     setForm]     = useState({ name: targetUser.name, username: targetUser.username, email: targetUser.email ?? "", is_admin: targetUser.is_admin });
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
   const [pwError,  setPwError]  = useState("");
@@ -327,10 +327,10 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
         ))}
         <div style={s.checkRow}>
           <input
-            id="edit_active" type="checkbox" checked={form.is_active}
-            onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))}
+            id="edit_admin" type="checkbox" checked={form.is_admin}
+            onChange={e => setForm(p => ({ ...p, is_admin: e.target.checked }))}
           />
-          <label htmlFor="edit_active" style={{ ...s.label, margin: 0 }}>Aktiv</label>
+          <label htmlFor="edit_admin" style={{ ...s.label, margin: 0 }}>Administrator</label>
         </div>
 
         <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -567,8 +567,8 @@ export default function Admin({ user, onLogout }) {
                   </div>
                   {users.filter(u => !u.is_admin).map(u => {
                     const isClocked = activeUserIds.has(u.id);
-                    const statusLabel = !u.is_active ? "Inaktiv" : isClocked ? "Eingestempelt" : "Ausgestempelt";
-                    const statusColor = !u.is_active ? MUTED : isClocked ? GREEN : MUTED;
+                    const statusLabel = isClocked ? "Eingestempelt" : "Ausgestempelt";
+                    const statusColor = isClocked ? GREEN : MUTED;
                     return (
                       <div key={u.id} style={s.mitarbeiterRow}>
                         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>

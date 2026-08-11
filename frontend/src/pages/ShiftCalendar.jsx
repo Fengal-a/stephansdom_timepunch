@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
@@ -7,208 +7,219 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
-const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-const MONTHS = ["Jänner","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
-const COLORS = ["#F5620F","#22c55e","#3b82f6","#a855f7","#ec4899","#eab308"];
+const ROLES = [
+  "AUFSPERRDIENST",
+  "DOMMESNER VORMITTAG",
+  "DOMAUFSICHT VORMITTAG",
+  "FREI",
+  "DOMMESNER NACHMITTAG",
+  "DOMAUFSICHT NACHMITTAG",
+  "SHOP",
+  "TURMKASSA",
+  "TÜRMERSTUBE",
+  "AUDIOG. INFO.",
+  "NORDTURM",
+  "ABEND KIRCHE",
+];
 
-function buildGrid(year, month) {
-  const first = new Date(year, month, 1);
-  const last  = new Date(year, month + 1, 0);
-  const pad   = (first.getDay() + 6) % 7; // Monday-first
-  const cells = [];
-  for (let i = 0; i < pad; i++) cells.push(null);
-  for (let d = 1; d <= last.getDate(); d++) cells.push(d);
-  return cells;
+const DAY_NAMES = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"];
+
+function getMonday(d) {
+  const date = new Date(d);
+  const day  = date.getDay();
+  date.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
+  date.setHours(0, 0, 0, 0);
+  return date;
 }
 
-function toIso(year, month, day) {
-  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+function addDays(d, n) {
+  const date = new Date(d);
+  date.setDate(date.getDate() + n);
+  return date;
 }
 
-// ── Add Event Modal ───────────────────────────────────────────────────────────
-
-function AddEventModal({ date, onClose, onSaved }) {
-  const [title,   setTitle]   = useState("");
-  const [color,   setColor]   = useState(COLORS[0]);
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
-
-  async function handleSave() {
-    if (!title.trim()) { setError("Titel erforderlich"); return; }
-    setLoading(true);
-    try {
-      const res = await fetch(`${API}/admin/calendar/events`, {
-        method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ date, title: title.trim(), color }),
-      });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail); }
-      onSaved();
-    } catch (e) { setError(e.message); }
-    setLoading(false);
-  }
-
-  return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={e => e.stopPropagation()}>
-        <p style={s.modalTitle}>Eintrag hinzufügen</p>
-        <p style={{ margin: 0, fontSize: "12px", color: MUTED }}>{date}</p>
-        {error && <p style={s.errorBox}>{error}</p>}
-        <div style={s.field}>
-          <label style={s.label}>Titel</label>
-          <input
-            style={s.input} type="text" placeholder="z.B. Frühschicht, Urlaub, …"
-            value={title} autoFocus
-            onChange={e => setTitle(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleSave()}
-          />
-        </div>
-        <div style={s.field}>
-          <label style={s.label}>Farbe</label>
-          <div style={{ display: "flex", gap: "8px" }}>
-            {COLORS.map(c => (
-              <button
-                key={c}
-                style={{
-                  width: "28px", height: "28px", borderRadius: "50%",
-                  background: c, border: color === c ? "3px solid #fff" : "3px solid transparent",
-                  cursor: "pointer", flexShrink: 0,
-                }}
-                onClick={() => setColor(c)}
-              />
-            ))}
-          </div>
-        </div>
-        <div style={s.modalBtns}>
-          <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
-          <button style={s.confirmBtn} onClick={handleSave} disabled={loading}>
-            {loading ? "..." : "Speichern"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+function toIso(d) {
+  return d.toISOString().split("T")[0];
 }
 
-// ── Main Calendar Component ───────────────────────────────────────────────────
+function fmtDay(d) {
+  return d.toLocaleDateString("de-AT", { day: "2-digit", month: "2-digit" });
+}
 
 export default function ShiftCalendar() {
-  const now   = new Date();
-  const [cur,      setCur]      = useState({ year: now.getFullYear(), month: now.getMonth() });
-  const [events,   setEvents]   = useState([]);
-  const [addDate,  setAddDate]  = useState(null);
-  const [loading,  setLoading]  = useState(false);
+  const [monday,      setMonday]      = useState(() => getMonday(new Date()));
+  const [cells,       setCells]       = useState({});   // "ISO|ROLE" → worker_name
+  const [note,        setNote]        = useState("");
+  const [editingCell, setEditingCell] = useState(null); // { date, role }
+  const [editValue,   setEditValue]   = useState("");
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteValue,   setNoteValue]   = useState("");
+  const inputRef = useRef(null);
 
-  useEffect(() => { fetchEvents(); }, [cur]);
+  const weekStart = toIso(monday);
+  const days      = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  const weekLabel = `${fmtDay(monday)} – ${fmtDay(addDays(monday, 6))} ${monday.getFullYear()}`;
 
-  async function fetchEvents() {
-    setLoading(true);
+  useEffect(() => { fetchWeek(); }, [weekStart]);
+
+  useEffect(() => {
+    if (editingCell && inputRef.current) inputRef.current.focus();
+  }, [editingCell]);
+
+  async function fetchWeek() {
     try {
-      const res = await fetch(
-        `${API}/admin/calendar/events?year=${cur.year}&month=${cur.month + 1}`,
-        { headers: authHeaders() }
-      );
-      if (res.ok) setEvents(await res.json());
+      const res = await fetch(`${API}/admin/calendar/week?date=${weekStart}`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const map  = {};
+      for (const c of data.cells) map[`${c.date}|${c.role}`] = c.worker_name;
+      setCells(map);
+      setNote(data.note ?? "");
+      setNoteValue(data.note ?? "");
     } catch {}
-    setLoading(false);
   }
 
-  async function handleDelete(eventId) {
-    await fetch(`${API}/admin/calendar/events/${eventId}`, {
-      method: "DELETE", headers: authHeaders(),
+  async function saveCell(isoDate, role, value) {
+    setCells(prev => ({ ...prev, [`${isoDate}|${role}`]: value }));
+    await fetch(`${API}/admin/calendar/cell`, {
+      method: "PUT", headers: authHeaders(),
+      body: JSON.stringify({ date: isoDate, role, worker_name: value }),
     });
-    setEvents(prev => prev.filter(e => e.id !== eventId));
   }
 
-  function prevMonth() {
-    setCur(c => c.month === 0
-      ? { year: c.year - 1, month: 11 }
-      : { year: c.year,     month: c.month - 1 }
-    );
+  async function saveNote() {
+    await fetch(`${API}/admin/calendar/note`, {
+      method: "PUT", headers: authHeaders(),
+      body: JSON.stringify({ week_start: weekStart, note: noteValue }),
+    });
+    setNote(noteValue);
+    setEditingNote(false);
   }
 
-  function nextMonth() {
-    setCur(c => c.month === 11
-      ? { year: c.year + 1, month: 0 }
-      : { year: c.year,     month: c.month + 1 }
-    );
+  function startEdit(isoDate, role) {
+    setEditingCell({ date: isoDate, role });
+    setEditValue(cells[`${isoDate}|${role}`] ?? "");
   }
 
-  const cells    = buildGrid(cur.year, cur.month);
-  const eventMap = events.reduce((acc, e) => {
-    if (!acc[e.date]) acc[e.date] = [];
-    acc[e.date].push(e);
-    return acc;
-  }, {});
-
-  const todayIso = toIso(now.getFullYear(), now.getMonth(), now.getDate());
+  function commitEdit() {
+    if (!editingCell) return;
+    saveCell(editingCell.date, editingCell.role, editValue.trim());
+    setEditingCell(null);
+  }
 
   return (
     <div style={s.root}>
-      {/* Month navigation */}
+
+      {/* Week navigation */}
       <div style={s.nav}>
-        <button style={s.navBtn} onClick={prevMonth}>‹</button>
-        <span style={s.navTitle}>{MONTHS[cur.month]} {cur.year}</span>
-        <button style={s.navBtn} onClick={nextMonth}>›</button>
+        <button style={s.navBtn} onClick={() => setMonday(d => addDays(d, -7))}>‹</button>
+        <span style={s.navTitle}>{weekLabel}</span>
+        <button style={s.navBtn} onClick={() => setMonday(d => addDays(d, 7))}>›</button>
       </div>
 
-      {/* Day headers */}
-      <div style={s.grid}>
-        {DAYS.map(d => (
-          <div key={d} style={s.dayHeader}>{d}</div>
-        ))}
+      {/* Scrollable table */}
+      <div style={s.tableWrap}>
+        <table style={s.table}>
+          <thead>
+            {/* Header row */}
+            <tr>
+              <th style={{ ...s.th, ...s.stickyDatum }}>DATUM</th>
+              <th style={{ ...s.th, ...s.stickyTag }}>TAG</th>
+              {ROLES.map(r => (
+                <th key={r} style={s.th}>{r}</th>
+              ))}
+            </tr>
+            {/* Time row */}
+            <tr>
+              <td style={{ ...s.timeCell, ...s.stickyDatum }} />
+              <td style={{ ...s.timeCell, ...s.stickyTag }} />
+              {ROLES.map(r => (
+                <td key={r} style={s.timeCell}>00:00 – 00:00</td>
+              ))}
+            </tr>
+          </thead>
 
-        {/* Day cells */}
-        {cells.map((day, i) => {
-          const iso      = day ? toIso(cur.year, cur.month, day) : null;
-          const dayEvts  = iso ? (eventMap[iso] ?? []) : [];
-          const isToday  = iso === todayIso;
-
-          return (
-            <div
-              key={i}
-              style={{
-                ...s.cell,
-                ...(day ? s.cellActive : s.cellEmpty),
-                ...(isToday ? s.cellToday : {}),
-              }}
-              onClick={() => day && setAddDate(iso)}
-            >
-              {day && (
-                <>
-                  <span style={{ ...s.dayNum, ...(isToday ? s.dayNumToday : {}) }}>
-                    {day}
-                  </span>
-                  <div style={s.eventList}>
-                    {dayEvts.map(ev => (
-                      <div
-                        key={ev.id}
-                        style={{ ...s.eventChip, background: ev.color + "22", borderColor: ev.color }}
-                        onClick={e => { e.stopPropagation(); handleDelete(ev.id); }}
-                        title="Klicken zum Löschen"
+          <tbody>
+            {days.map((d, i) => {
+              const iso       = toIso(d);
+              const isWeekend = i >= 5;
+              return (
+                <tr key={iso} style={isWeekend ? s.weekendRow : {}}>
+                  <td style={{ ...s.dateCell, ...s.stickyDatum, ...(isWeekend ? s.weekendSticky : {}) }}>
+                    {fmtDay(d)}
+                  </td>
+                  <td style={{ ...s.dayCell, ...s.stickyTag, ...(isWeekend ? s.weekendSticky : {}) }}>
+                    {DAY_NAMES[i]}
+                  </td>
+                  {ROLES.map(role => {
+                    const key       = `${iso}|${role}`;
+                    const isEditing = editingCell?.date === iso && editingCell?.role === role;
+                    const val       = cells[key] ?? "";
+                    return (
+                      <td
+                        key={role}
+                        style={{ ...s.cell, ...(isWeekend ? s.weekendCell : {}) }}
+                        onClick={() => !isEditing && startEdit(iso, role)}
                       >
-                        <span style={{ ...s.eventDot, background: ev.color }} />
-                        <span style={s.eventTitle}>{ev.title}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })}
+                        {isEditing ? (
+                          <input
+                            ref={inputRef}
+                            style={s.cellInput}
+                            value={editValue}
+                            onChange={e => setEditValue(e.target.value)}
+                            onBlur={commitEdit}
+                            onKeyDown={e => {
+                              if (e.key === "Enter")  commitEdit();
+                              if (e.key === "Escape") setEditingCell(null);
+                            }}
+                          />
+                        ) : (
+                          <span style={val ? s.cellValue : s.cellEmpty}>
+                            {val || "—"}
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
-      {loading && <p style={s.loading}>Laden…</p>}
+      {/* Note / special events */}
+      <div style={s.noteArea}>
+        <div style={s.noteHeader}>
+          <span style={s.noteLabel}>BESONDERE EREIGNISSE</span>
+          {!editingNote && (
+            <button style={s.noteEditBtn} onClick={() => { setNoteValue(note); setEditingNote(true); }}>
+              Bearbeiten
+            </button>
+          )}
+        </div>
+        {editingNote ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <textarea
+              style={s.textarea}
+              value={noteValue}
+              onChange={e => setNoteValue(e.target.value)}
+              rows={4}
+              autoFocus
+              placeholder="Besondere Ereignisse oder Hinweise für diese Woche…"
+            />
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button style={s.cancelBtn} onClick={() => setEditingNote(false)}>Abbrechen</button>
+              <button style={s.saveBtn}   onClick={saveNote}>Speichern</button>
+            </div>
+          </div>
+        ) : (
+          <p style={note ? s.noteText : s.noteEmpty}>
+            {note || "Keine besonderen Ereignisse eingetragen."}
+          </p>
+        )}
+      </div>
 
-      <p style={s.hint}>Auf einen Tag klicken zum Hinzufügen · Auf einen Eintrag klicken zum Löschen</p>
-
-      {addDate && (
-        <AddEventModal
-          date={addDate}
-          onClose={() => setAddDate(null)}
-          onSaved={() => { setAddDate(null); fetchEvents(); }}
-        />
-      )}
     </div>
   );
 }
@@ -223,116 +234,147 @@ const TEXT    = "#EDEDED";
 const MUTED   = "#6B6B6B";
 
 const s = {
-  root: {
-    display: "flex", flexDirection: "column", gap: "0",
-    minHeight: "100%",
-  },
+  root: { display: "flex", flexDirection: "column" },
+
   nav: {
     display: "flex", alignItems: "center", justifyContent: "space-between",
-    padding: "16px 20px", borderBottom: `1px solid ${BORDER}`,
+    padding: "14px 20px", borderBottom: `1px solid ${BORDER}`,
+    background: SURFACE,
   },
   navBtn: {
     background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
-    color: TEXT, fontSize: "20px", width: "36px", height: "36px",
-    cursor: "pointer", fontFamily: "inherit", lineHeight: 1,
-    display: "flex", alignItems: "center", justifyContent: "center",
+    color: TEXT, fontSize: "22px", width: "36px", height: "36px",
+    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
   },
-  navTitle: {
-    fontSize: "15px", fontWeight: "700", color: TEXT, letterSpacing: "0.04em",
-  },
-  grid: {
-    display: "grid", gridTemplateColumns: "repeat(7, 1fr)",
-    borderLeft: `1px solid ${BORDER}`, borderTop: `1px solid ${BORDER}`,
-    flex: 1,
-  },
-  dayHeader: {
-    padding: "10px 0", textAlign: "center", fontSize: "10px",
-    color: MUTED, letterSpacing: "0.12em", textTransform: "uppercase",
-    borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`,
-    background: SURFACE,
-  },
-  cell: {
-    minHeight: "90px", padding: "6px",
-    borderRight: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`,
-    display: "flex", flexDirection: "column", gap: "3px",
-    boxSizing: "border-box",
-  },
-  cellActive: {
-    background: BLACK, cursor: "pointer",
-    transition: "background 0.1s",
-  },
-  cellEmpty: {
-    background: "transparent", cursor: "default",
-  },
-  cellToday: {
-    background: "rgba(245,98,15,0.04)",
-  },
-  dayNum: {
-    fontSize: "12px", color: MUTED, fontWeight: "600", alignSelf: "flex-end",
-    lineHeight: 1, marginBottom: "2px",
-  },
-  dayNumToday: {
-    color: ORANGE,
-  },
-  eventList: {
-    display: "flex", flexDirection: "column", gap: "2px",
-  },
-  eventChip: {
-    display: "flex", alignItems: "center", gap: "4px",
-    border: "1px solid", borderRadius: "3px",
-    padding: "2px 5px", cursor: "pointer",
-    transition: "opacity 0.1s",
-  },
-  eventDot: {
-    width: "6px", height: "6px", borderRadius: "50%", flexShrink: 0,
-  },
-  eventTitle: {
-    fontSize: "10px", color: TEXT, overflow: "hidden",
-    textOverflow: "ellipsis", whiteSpace: "nowrap",
-  },
-  loading: {
-    margin: "20px auto", fontSize: "12px", color: MUTED,
-  },
-  hint: {
-    textAlign: "center", fontSize: "10px", color: MUTED,
-    padding: "12px", letterSpacing: "0.06em",
+  navTitle: { fontSize: "14px", fontWeight: "700", color: TEXT, letterSpacing: "0.04em" },
+
+  tableWrap: { overflowX: "auto", borderBottom: `1px solid ${BORDER}` },
+
+  table: {
+    borderCollapse: "collapse",
+    width: "100%",
+    minWidth: "1200px",
+    fontFamily: "'DM Mono', 'Courier New', monospace",
+    fontSize: "11px",
   },
 
-  // Modal
-  overlay: {
-    position: "fixed", inset: 0, zIndex: 50,
-    background: "rgba(0,0,0,0.75)",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    padding: "24px",
+  th: {
+    background: SURFACE,
+    color: MUTED,
+    fontWeight: "700",
+    fontSize: "9px",
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    padding: "10px 8px",
+    border: `1px solid ${BORDER}`,
+    textAlign: "center",
+    verticalAlign: "bottom",
+    whiteSpace: "pre-line",
+    minWidth: "82px",
   },
-  modal: {
-    background: "#1a1a1a", border: `1px solid ${BORDER}`,
-    borderTop: `3px solid ${ORANGE}`, borderRadius: "6px",
-    padding: "28px 24px", width: "100%", maxWidth: "360px",
-    display: "flex", flexDirection: "column", gap: "14px",
+
+  stickyDatum: {
+    position: "sticky", left: 0, zIndex: 2,
+    minWidth: "64px", width: "64px",
   },
-  modalTitle: { margin: 0, fontSize: "18px", fontWeight: "700", color: TEXT, fontFamily: "'DM Sans', sans-serif" },
-  field:      { display: "flex", flexDirection: "column", gap: "6px" },
-  label:      { fontSize: "10px", color: MUTED, letterSpacing: "0.12em", textTransform: "uppercase" },
-  input: {
+  stickyTag: {
+    position: "sticky", left: 64, zIndex: 2,
+    minWidth: "76px", width: "76px",
+    borderLeft: `2px solid ${BORDER}`,
+  },
+
+  timeCell: {
+    background: BLACK,
+    color: MUTED,
+    fontSize: "9px",
+    textAlign: "center",
+    padding: "5px 4px",
+    border: `1px solid ${BORDER}`,
+    letterSpacing: "0.04em",
+  },
+
+  dateCell: {
+    background: SURFACE,
+    color: MUTED,
+    fontSize: "11px",
+    fontWeight: "700",
+    padding: "10px 8px",
+    border: `1px solid ${BORDER}`,
+    textAlign: "center",
+    whiteSpace: "nowrap",
+  },
+  dayCell: {
+    background: SURFACE,
+    color: TEXT,
+    fontSize: "11px",
+    padding: "10px 8px",
+    border: `1px solid ${BORDER}`,
+    borderLeft: `2px solid ${BORDER}`,
+    whiteSpace: "nowrap",
+  },
+
+  cell: {
+    background: BLACK,
+    padding: "0",
+    border: `1px solid ${BORDER}`,
+    height: "38px",
+    cursor: "pointer",
+    textAlign: "center",
+    verticalAlign: "middle",
+  },
+  weekendRow: {},
+  weekendCell: { background: "#0a0a0a" },
+  weekendSticky: { background: "#111" },
+
+  cellValue: { color: TEXT, fontSize: "11px" },
+  cellEmpty: { color: BORDER, fontSize: "13px" },
+
+  cellInput: {
+    width: "100%",
+    background: "rgba(245,98,15,0.08)",
+    border: "none",
+    borderBottom: `1px solid ${ORANGE}`,
+    color: TEXT,
+    fontSize: "11px",
+    textAlign: "center",
+    padding: "10px 4px",
+    outline: "none",
+    fontFamily: "'DM Mono', 'Courier New', monospace",
+    boxSizing: "border-box",
+  },
+
+  noteArea: {
+    padding: "20px 20px 28px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  noteHeader: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+  },
+  noteLabel: { fontSize: "10px", color: MUTED, letterSpacing: "0.15em" },
+  noteEditBtn: {
+    background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "4px 12px", fontSize: "10px", color: MUTED,
+    cursor: "pointer", fontFamily: "inherit",
+  },
+  noteText:  { margin: 0, fontSize: "13px", color: TEXT, lineHeight: "1.6", whiteSpace: "pre-wrap" },
+  noteEmpty: { margin: 0, fontSize: "12px", color: MUTED, fontStyle: "italic" },
+
+  textarea: {
     background: BLACK, border: `1px solid ${BORDER}`, borderRadius: "3px",
-    padding: "11px 12px", fontSize: "14px", color: TEXT,
-    fontFamily: "inherit", outline: "none",
+    color: TEXT, fontSize: "13px", padding: "12px",
+    fontFamily: "'DM Mono', 'Courier New', monospace",
+    resize: "vertical", outline: "none", lineHeight: "1.6",
   },
-  modalBtns: { display: "flex", gap: "10px", marginTop: "4px" },
   cancelBtn: {
-    flex: 1, background: "none", border: `1px solid ${BORDER}`,
-    borderRadius: "3px", padding: "12px", fontSize: "12px",
-    color: MUTED, cursor: "pointer", fontFamily: "inherit",
+    background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "8px 16px", fontSize: "11px", color: MUTED,
+    cursor: "pointer", fontFamily: "inherit",
   },
-  confirmBtn: {
-    flex: 2, background: ORANGE, border: "none", borderRadius: "3px",
-    padding: "12px", fontSize: "12px", fontWeight: "700",
+  saveBtn: {
+    background: ORANGE, border: "none", borderRadius: "3px",
+    padding: "8px 20px", fontSize: "11px", fontWeight: "700",
     color: "#fff", cursor: "pointer", fontFamily: "inherit",
-  },
-  errorBox: {
-    margin: 0, padding: "10px 12px",
-    background: "rgba(245,98,15,0.1)", border: `1px solid rgba(245,98,15,0.3)`,
-    borderRadius: "3px", fontSize: "12px", color: ORANGE,
   },
 };

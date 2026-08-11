@@ -1,64 +1,76 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from datetime import date
+from datetime import date, timedelta
 
 from ..database import get_db
-from ..models import ShiftEvent
+from ..models import ShiftCell, WeekNote
 from .auth import require_admin
 
 router = APIRouter(prefix="/admin/calendar", tags=["calendar"])
 
 
-@router.get("/events")
-def get_events(
-    year:  int = Query(...),
-    month: int = Query(...),
-    db:    Session = Depends(get_db),
+def _monday(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
+@router.get("/week")
+def get_week(
+    date_str: str = Query(..., alias="date"),
+    db: Session = Depends(get_db),
     _=Depends(require_admin),
 ):
-    start = date(year, month, 1)
-    end   = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
-    events = (
-        db.query(ShiftEvent)
-        .filter(ShiftEvent.date >= start, ShiftEvent.date < end)
-        .order_by(ShiftEvent.date, ShiftEvent.id)
-        .all()
-    )
-    return [
-        {"id": e.id, "date": e.date.isoformat(), "title": e.title, "color": e.color}
-        for e in events
-    ]
+    monday = _monday(date.fromisoformat(date_str))
+    sunday = monday + timedelta(days=6)
+
+    cells = db.query(ShiftCell).filter(
+        ShiftCell.date >= monday,
+        ShiftCell.date <= sunday,
+    ).all()
+
+    note_row = db.query(WeekNote).filter(WeekNote.week_start == monday).first()
+
+    return {
+        "week_start": monday.isoformat(),
+        "cells": [
+            {"date": c.date.isoformat(), "role": c.role, "worker_name": c.worker_name or ""}
+            for c in cells
+        ],
+        "note": note_row.note if note_row else "",
+    }
 
 
-@router.post("/events")
-def create_event(
+@router.put("/cell")
+def set_cell(
     payload: dict,
-    db:      Session = Depends(get_db),
+    db: Session = Depends(get_db),
     _=Depends(require_admin),
 ):
-    title = (payload.get("title") or "").strip()
-    if not title:
-        raise HTTPException(status_code=400, detail="Titel erforderlich")
-    event = ShiftEvent(
-        date=date.fromisoformat(payload["date"]),
-        title=title,
-        color=payload.get("color", "#F5620F"),
-    )
-    db.add(event)
+    d    = date.fromisoformat(payload["date"])
+    role = payload["role"]
+    name = (payload.get("worker_name") or "").strip()
+
+    cell = db.query(ShiftCell).filter(ShiftCell.date == d, ShiftCell.role == role).first()
+    if cell:
+        cell.worker_name = name or None
+    else:
+        db.add(ShiftCell(date=d, role=role, worker_name=name or None))
     db.commit()
-    db.refresh(event)
-    return {"id": event.id, "date": event.date.isoformat(), "title": event.title, "color": event.color}
+    return {"ok": True}
 
 
-@router.delete("/events/{event_id}")
-def delete_event(
-    event_id: int,
-    db:       Session = Depends(get_db),
+@router.put("/note")
+def set_note(
+    payload: dict,
+    db: Session = Depends(get_db),
     _=Depends(require_admin),
 ):
-    event = db.query(ShiftEvent).filter(ShiftEvent.id == event_id).first()
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    db.delete(event)
+    monday = _monday(date.fromisoformat(payload["week_start"]))
+    note   = (payload.get("note") or "").strip() or None
+
+    row = db.query(WeekNote).filter(WeekNote.week_start == monday).first()
+    if row:
+        row.note = note
+    else:
+        db.add(WeekNote(week_start=monday, note=note))
     db.commit()
     return {"ok": True}

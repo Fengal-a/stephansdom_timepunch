@@ -144,6 +144,7 @@ def forgot_password(payload: dict, db: Session = Depends(get_db)):
 def reset_password(payload: dict, db: Session = Depends(get_db)):
     token    = (payload.get("token") or "").strip()
     password = (payload.get("password") or "").strip()
+    username = (payload.get("username") or "").strip().lower()
     if not token or len(password) < 4:
         raise HTTPException(status_code=400, detail="Ungültige Anfrage")
     user = db.query(User).filter(User.password_reset_token == token).first()
@@ -151,6 +152,13 @@ def reset_password(payload: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Ungültiger oder abgelaufener Link")
     if user.password_reset_expires < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Dieser Link ist abgelaufen")
+    if username:
+        if len(username) < 3:
+            raise HTTPException(status_code=400, detail="Benutzername muss mindestens 3 Zeichen haben")
+        conflict = db.query(User).filter(User.username == username, User.id != user.id).first()
+        if conflict:
+            raise HTTPException(status_code=409, detail="Benutzername bereits vergeben")
+        user.username = username
     user.password_hash           = hash_password(password)
     user.password_reset_token    = None
     user.password_reset_expires  = None

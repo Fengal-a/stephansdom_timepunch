@@ -32,7 +32,7 @@ def _link_button(url: str, label: str) -> str:
 
 
 def send_invite_email(to: str, name: str, token: str):
-    link = f"{APP_URL}/reset-password?token={token}"
+    link = f"{APP_URL}/reset-password?token={token}&invite=1"
     html = f"""
     <div style="font-family:monospace;max-width:480px;margin:0 auto;padding:32px;background:#161616;color:#EDEDED;border-radius:6px;">
       <h2 style="color:#F5620F;margin:0 0 20px;">Willkommen bei TimePunch</h2>
