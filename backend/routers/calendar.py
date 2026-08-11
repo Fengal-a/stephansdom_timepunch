@@ -66,6 +66,7 @@ def set_week_cells(
         ShiftCell.date >= monday,
         ShiftCell.date <= sunday,
     ).delete(synchronize_session=False)
+    db.flush()  # send DELETE to DB before inserting new rows
 
     for c in payload.get("cells", []):
         name = (c.get("worker_name") or "").strip()
