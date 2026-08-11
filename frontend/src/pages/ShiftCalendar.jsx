@@ -75,6 +75,8 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
   const [editingNote, setEditingNote] = useState(false);
   const [noteValue,   setNoteValue]   = useState("");
   const [userNames,   setUserNames]   = useState([]);
+  const [saving,      setSaving]      = useState(false);
+  const [saveStatus,  setSaveStatus]  = useState(null); // null | "ok" | "error"
   const inputRef = useRef(null);
 
   const weekStart = toIso(monday);
@@ -120,12 +122,38 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
     } catch {}
   }
 
-  async function saveCell(isoDate, role, value) {
+  function updateCellLocal(isoDate, role, value) {
     setCells(prev => ({ ...prev, [`${isoDate}|${role}`]: value }));
-    await fetch(`${API}/admin/calendar/cell`, {
-      method: "PUT", headers: authHeaders(),
-      body: JSON.stringify({ date: isoDate, role, worker_name: value }),
-    });
+    setSaveStatus(null);
+  }
+
+  async function saveWeek() {
+    setSaving(true);
+    setSaveStatus(null);
+    const cellsArr = [];
+    for (const [key, val] of Object.entries(cells)) {
+      if (!val) continue;
+      const [dateStr, role] = key.split("|");
+      cellsArr.push({ date: dateStr, role, worker_name: val });
+    }
+    try {
+      const res = await fetch(`${API}/admin/calendar/week-cells`, {
+        method: "PUT", headers: authHeaders(),
+        body: JSON.stringify({ week_start: weekStart, cells: cellsArr }),
+      });
+      if (res.ok) {
+        setSaveStatus("ok");
+        setTimeout(() => setSaveStatus(null), 3000);
+      } else {
+        const text = await res.text();
+        console.error("saveWeek failed:", res.status, text);
+        setSaveStatus("error");
+      }
+    } catch (e) {
+      console.error("saveWeek error:", e);
+      setSaveStatus("error");
+    }
+    setSaving(false);
   }
 
   async function saveNote() {
@@ -176,7 +204,7 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
       u.displayName.toLowerCase() === trimmed.toLowerCase() ||
       u.username.toLowerCase() === trimmed.toLowerCase()
     );
-    saveCell(editingCell.date, editingCell.role, match ? match.username : trimmed);
+    updateCellLocal(editingCell.date, editingCell.role, match ? match.username : trimmed);
     setEditingCell(null);
   }
 
@@ -191,10 +219,11 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
     if (e.key === "Enter") {
       e.preventDefault();
       if (suggIdx >= 0 && suggestions[suggIdx]) {
-        // keyboard: arrow-select + Enter saves immediately
         const sel = suggestions[suggIdx];
         setSuggestions([]);
-        saveCell(editingCell.date, editingCell.role, sel.username);
+        setSuggIdx(-1);
+        setEditValue(sel.displayName);
+        updateCellLocal(editingCell.date, editingCell.role, sel.username);
         setEditingCell(null);
       } else {
         commitEdit();
@@ -304,6 +333,17 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
           </tbody>
         </table>
       </div>
+
+      {/* Save bar — admin only */}
+      {!readOnly && (
+        <div style={s.saveBar}>
+          <button style={{ ...s.saveBtn, opacity: saving ? 0.6 : 1 }} onClick={saveWeek} disabled={saving}>
+            {saving ? "Wird gespeichert…" : "Speichern"}
+          </button>
+          {saveStatus === "ok"    && <span style={s.saveOk}>✓ Gespeichert</span>}
+          {saveStatus === "error" && <span style={s.saveErr}>Fehler beim Speichern — Details in Konsole</span>}
+        </div>
+      )}
 
       {/* Note area */}
       <div style={s.noteArea}>
@@ -428,6 +468,13 @@ const s = {
     textAlign: "left", borderBottom: `1px solid ${BORDER}`,
   },
   dropdownActive: { background: "rgba(245,98,15,0.15)", color: ORANGE },
+
+  saveBar: {
+    display: "flex", alignItems: "center", gap: "14px",
+    padding: "14px 20px", borderBottom: `1px solid ${BORDER}`,
+  },
+  saveOk:  { fontSize: "12px", color: "#4caf50" },
+  saveErr: { fontSize: "12px", color: "#f44336" },
 
   noteArea:   { padding: "20px 20px 28px", display: "flex", flexDirection: "column", gap: "10px" },
   noteHeader: { display: "flex", alignItems: "center", justifyContent: "space-between" },

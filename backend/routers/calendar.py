@@ -53,6 +53,33 @@ def get_week(
     }
 
 
+@router.put("/week-cells")
+def set_week_cells(
+    payload: dict,
+    db: Session = Depends(get_db),
+    _=Depends(require_admin),
+):
+    monday = _monday(date.fromisoformat(payload["week_start"]))
+    sunday = monday + timedelta(days=6)
+
+    db.query(ShiftCell).filter(
+        ShiftCell.date >= monday,
+        ShiftCell.date <= sunday,
+    ).delete()
+
+    for c in payload.get("cells", []):
+        name = (c.get("worker_name") or "").strip()
+        if name:
+            db.add(ShiftCell(
+                date=date.fromisoformat(c["date"]),
+                role=c["role"],
+                worker_name=name,
+            ))
+
+    db.commit()
+    return {"ok": True}
+
+
 @router.put("/cell")
 def set_cell(
     payload: dict,
