@@ -80,19 +80,17 @@ function AddUserModal({ onClose, onCreated }) {
       <div style={s.modal} onClick={e => e.stopPropagation()}>
         <p style={s.modalTitle}>Neuer Mitarbeiter</p>
         {error && <p style={s.errorBox}>{error}</p>}
-        <div style={{ display: "flex", gap: "10px" }}>
-          <div style={{ ...s.field, flex: "0 0 110px" }}>
-            <label style={s.label}>Vorname</label>
-            <input style={s.input} type="text" placeholder="Max"
-              value={form.first_name}
-              onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))} />
-          </div>
-          <div style={{ ...s.field, flex: 1, minWidth: 0 }}>
-            <label style={s.label}>Nachname</label>
-            <input style={s.input} type="text" placeholder="Mustermann"
-              value={form.last_name}
-              onChange={e => setForm(p => ({ ...p, last_name: e.target.value }))} />
-          </div>
+        <div style={s.field}>
+          <label style={s.label}>Vorname</label>
+          <input style={s.input} type="text" placeholder="Max"
+            value={form.first_name}
+            onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))} />
+        </div>
+        <div style={s.field}>
+          <label style={s.label}>Nachname</label>
+          <input style={s.input} type="text" placeholder="Mustermann"
+            value={form.last_name}
+            onChange={e => setForm(p => ({ ...p, last_name: e.target.value }))} />
         </div>
         {[
           { key: "email",    label: "E-Mail — Einladung senden (empfohlen)",        type: "email",    placeholder: "max@beispiel.at" },
@@ -324,17 +322,15 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
       <div style={s.modal} onClick={e => e.stopPropagation()}>
         <p style={s.modalTitle}>{targetUser.name}</p>
         {error && <p style={s.errorBox}>{error}</p>}
-        <div style={{ display: "flex", gap: "10px" }}>
-          <div style={{ ...s.field, flex: 1 }}>
-            <label style={s.label}>Vorname</label>
-            <input style={s.input} type="text" value={form.first_name}
-              onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))} />
-          </div>
-          <div style={{ ...s.field, flex: 1 }}>
-            <label style={s.label}>Nachname</label>
-            <input style={s.input} type="text" value={form.last_name}
-              onChange={e => setForm(p => ({ ...p, last_name: e.target.value }))} />
-          </div>
+        <div style={s.field}>
+          <label style={s.label}>Vorname</label>
+          <input style={s.input} type="text" value={form.first_name}
+            onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))} />
+        </div>
+        <div style={s.field}>
+          <label style={s.label}>Nachname</label>
+          <input style={s.input} type="text" value={form.last_name}
+            onChange={e => setForm(p => ({ ...p, last_name: e.target.value }))} />
         </div>
         {[
           { key: "username", label: "Benutzername",   type: "text"  },
@@ -763,26 +759,12 @@ export default function Admin({ user, onLogout }) {
                                 </div>
                               ))
                             )}
-                            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                              <button
-                                style={s.manualPunchBtn}
-                                onClick={() => handleAdminPunch(u.id)}
-                              >
-                                {isActive ? "⏹ Manuell ausstempeln" : "▶ Manuell einstempeln"}
-                              </button>
-                              <button
-                                style={s.manualPunchBtn}
-                                onClick={() => setResetUser(u)}
-                              >
-                                Passwort zurücksetzen
-                              </button>
-                              <button
-                                style={s.deleteUserBtn}
-                                onClick={() => handleDeleteUser(u.id, u.name)}
-                              >
-                                Mitarbeiter löschen
-                              </button>
-                            </div>
+                            <button
+                              style={s.manualPunchBtn}
+                              onClick={() => handleAdminPunch(u.id)}
+                            >
+                              {isActive ? "⏹ Manuell ausstempeln" : "▶ Manuell einstempeln"}
+                            </button>
                           </div>
                         )}
                       </div>

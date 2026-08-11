@@ -75,8 +75,7 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
   const [editingNote, setEditingNote] = useState(false);
   const [noteValue,   setNoteValue]   = useState("");
   const [userNames,   setUserNames]   = useState([]);
-  const inputRef     = useRef(null);
-  const committedRef = useRef(false);
+  const inputRef = useRef(null);
 
   const weekStart = toIso(monday);
   const days      = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
@@ -140,7 +139,6 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
 
   function startEdit(isoDate, role) {
     if (readOnly) return;
-    committedRef.current = false;
     setEditingCell({ date: isoDate, role });
     const rawVal = cells[`${isoDate}|${role}`] ?? "";
     setEditValue(resolveDisplayName(rawVal, userNames) || rawVal);
@@ -164,14 +162,12 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
   }
 
   function selectSuggestion(item) {
-    committedRef.current = true;
     setSuggestions([]);
     setEditingCell(null);
     saveCell(editingCell.date, editingCell.role, item.username);
   }
 
   function commitEdit() {
-    if (committedRef.current) { committedRef.current = false; return; }
     if (!editingCell) return;
     setSuggestions([]);
     const trimmed = editValue.trim();
@@ -183,6 +179,11 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
     setEditingCell(null);
   }
 
+  function cancelEdit() {
+    setSuggestions([]);
+    setEditingCell(null);
+  }
+
   function handleKeyDown(e) {
     if (e.key === "ArrowDown") { e.preventDefault(); setSuggIdx(i => Math.min(i + 1, suggestions.length - 1)); }
     if (e.key === "ArrowUp")   { e.preventDefault(); setSuggIdx(i => Math.max(i - 1, 0)); }
@@ -191,7 +192,7 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
       if (suggIdx >= 0 && suggestions[suggIdx]) selectSuggestion(suggestions[suggIdx]);
       else { commitEdit(); }
     }
-    if (e.key === "Escape") { setEditingCell(null); setSuggestions([]); }
+    if (e.key === "Escape") { cancelEdit(); }
   }
 
   return (
@@ -252,21 +253,28 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
                       >
                         {isEditing ? (
                           <div style={{ position: "relative" }}>
-                            <input
-                              ref={inputRef}
-                              style={s.cellInput}
-                              value={editValue}
-                              onChange={handleEditChange}
-                              onBlur={() => { setTimeout(() => { commitEdit(); setSuggestions([]); }, 120); }}
-                              onKeyDown={handleKeyDown}
-                            />
+                            <div style={{ display: "flex", alignItems: "center" }}>
+                              <input
+                                ref={inputRef}
+                                style={{ ...s.cellInput, flex: 1 }}
+                                value={editValue}
+                                onChange={handleEditChange}
+                                onBlur={cancelEdit}
+                                onKeyDown={handleKeyDown}
+                                placeholder="Name…"
+                              />
+                              <button
+                                style={s.cellSaveBtn}
+                                onMouseDown={e => { e.preventDefault(); commitEdit(); }}
+                              >✓</button>
+                            </div>
                             {suggestions.length > 0 && (
                               <div style={s.dropdown}>
                                 {suggestions.map((item, idx) => (
                                   <div
                                     key={item.username}
                                     style={{ ...s.dropdownItem, ...(idx === suggIdx ? s.dropdownActive : {}) }}
-                                    onMouseDown={() => selectSuggestion(item)}
+                                    onMouseDown={e => { e.preventDefault(); selectSuggestion(item); }}
                                   >
                                     {item.displayName}
                                   </div>
@@ -390,10 +398,16 @@ const s = {
   cellHighlightVal: { color: ORANGE, fontSize: "11px", fontWeight: "700" },
 
   cellInput: {
-    width: "100%", background: "rgba(245,98,15,0.08)", border: "none",
+    background: "rgba(245,98,15,0.08)", border: "none",
     borderBottom: `1px solid ${ORANGE}`, color: TEXT, fontSize: "11px",
-    textAlign: "center", padding: "10px 4px", outline: "none",
+    textAlign: "center", padding: "6px 2px", outline: "none",
     fontFamily: "'DM Mono', 'Courier New', monospace", boxSizing: "border-box",
+    minWidth: 0,
+  },
+  cellSaveBtn: {
+    background: ORANGE, border: "none", color: "#fff",
+    fontSize: "12px", fontWeight: "700", padding: "0 5px",
+    cursor: "pointer", alignSelf: "stretch", flexShrink: 0,
   },
 
   dropdown: {
