@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import date, timedelta
 
@@ -62,20 +63,23 @@ def set_week_cells(
     monday = _monday(date.fromisoformat(payload["week_start"]))
     sunday = monday + timedelta(days=6)
 
-    db.query(ShiftCell).filter(
-        ShiftCell.date >= monday,
-        ShiftCell.date <= sunday,
-    ).delete(synchronize_session=False)
-    db.flush()  # send DELETE to DB before inserting new rows
+    # Raw SQL guarantees DELETE is sent to Postgres before any INSERT
+    db.execute(
+        text("DELETE FROM shift_cells WHERE date >= :monday AND date <= :sunday"),
+        {"monday": monday, "sunday": sunday},
+    )
 
     for c in payload.get("cells", []):
         name = (c.get("worker_name") or "").strip()
-        if name:
-            db.add(ShiftCell(
-                date=date.fromisoformat(c["date"]),
-                role=c["role"],
-                worker_name=name,
-            ))
+        if not name:
+            continue
+        cell_date = date.fromisoformat(c["date"])
+        if not (monday <= cell_date <= sunday):
+            continue  # ignore cells that don't belong to this week
+        db.execute(
+            text("INSERT INTO shift_cells (date, role, worker_name) VALUES (:d, :r, :n)"),
+            {"d": cell_date, "r": c["role"], "n": name},
+        )
 
     db.commit()
     return {"ok": True}
