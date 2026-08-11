@@ -22,6 +22,21 @@ const ROLES = [
   "ABEND KIRCHE",
 ];
 
+const ROLE_TIMES = {
+  "AUFSPERRDIENST":        "05:30 – 15:30",
+  "DOMMESNER VORMITTAG":   "06:30 – 16:30",
+  "DOMAUFSICHT VORMITTAG": "07:00 – 17:00",
+  "FREI":                  "",
+  "DOMMESNER NACHMITTAG":  "09:00 – 19:00",
+  "DOMAUFSICHT NACHMITTAG":"09:00 – 19:00",
+  "SHOP":                  "09:00 – 19:00",
+  "TURMKASSA":             "09:00 – 19:00",
+  "TÜRMERSTUBE":           "09:00 – 19:00",
+  "AUDIOG. INFO.":         "09:00 – 17:00",
+  "NORDTURM":              "09:00 – 19:00",
+  "ABEND KIRCHE":          "19:00 – 22:00",
+};
+
 const DAY_NAMES = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"];
 
 function getMonday(d) {
@@ -134,7 +149,7 @@ export default function ShiftCalendar() {
               <td style={{ ...s.timeCell, ...s.stickyDatum }} />
               <td style={{ ...s.timeCell, ...s.stickyTag }} />
               {ROLES.map(r => (
-                <td key={r} style={s.timeCell}>00:00 – 00:00</td>
+                <td key={r} style={s.timeCell}>{ROLE_TIMES[r] || ""}</td>
               ))}
             </tr>
           </thead>
