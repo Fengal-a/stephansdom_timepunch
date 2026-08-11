@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 from ..database import get_db
 from ..models import ShiftCell, WeekNote
-from .auth import require_admin
+from .auth import require_admin, get_current_user
 
 router = APIRouter(prefix="/admin/calendar", tags=["calendar"])
 
@@ -17,7 +17,7 @@ def _monday(d: date) -> date:
 def get_week(
     date_str: str = Query(..., alias="date"),
     db: Session = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(get_current_user),
 ):
     monday = _monday(date.fromisoformat(date_str))
     sunday = monday + timedelta(days=6)

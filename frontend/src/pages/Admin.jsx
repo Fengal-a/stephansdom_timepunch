@@ -544,19 +544,12 @@ export default function Admin({ user, onLogout }) {
                   style={{ ...s.logoutBtn, ...(subPage === "mitarbeiter" ? s.logoutBtnActive : {}) }}
                   onClick={() => setSubPage(subPage === "mitarbeiter" ? "overview" : "mitarbeiter")}
                 >Mitarbeiter</button>
-                <button
-                  style={{ ...s.logoutBtn, ...(subPage === "kalender" ? s.logoutBtnActive : {}) }}
-                  onClick={() => setSubPage(subPage === "kalender" ? "overview" : "kalender")}
-                >Kalender</button>
                 <button style={s.logoutBtn} onClick={() => setPage("dienstplan")}>Dienstplan</button>
                 <button style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
               </div>
             </header>
 
             <main style={s.main}>
-
-              {/* ── Kalender view ── */}
-              {subPage === "kalender" && <ShiftCalendar />}
 
               {/* ── Mitarbeiter list view ── */}
               {subPage === "mitarbeiter" && (
@@ -783,7 +776,14 @@ export default function Admin({ user, onLogout }) {
 
         {/* ── Dienstplan panel ── */}
         <div style={s.slidePanel}>
-          <Dienstplan onSwipeBack={() => setPage("admin")} isAdmin={true} />
+          <div style={s.dienstplanWrap}>
+            <header style={s.dienstplanHeader}>
+              <button style={s.logoutBtn} onClick={() => setPage("admin")}>‹ Zurück</button>
+              <span style={{ fontSize: "13px", fontWeight: "700", color: TEXT, letterSpacing: "0.1em" }}>Dienstplan</span>
+              <div style={{ width: "72px" }} />
+            </header>
+            <ShiftCalendar readOnly={false} />
+          </div>
         </div>
 
       </div>
@@ -852,6 +852,15 @@ const s = {
     width: "50%",
     minHeight: "100dvh",
     flexShrink: 0,
+  },
+  dienstplanWrap: {
+    minHeight: "100dvh", background: BLACK,
+    display: "flex", flexDirection: "column",
+  },
+  dienstplanHeader: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "10px 14px", borderBottom: `1px solid ${BORDER}`, background: SURFACE,
+    position: "relative", zIndex: 1,
   },
 
   root: {
