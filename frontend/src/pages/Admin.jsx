@@ -81,13 +81,13 @@ function AddUserModal({ onClose, onCreated }) {
         <p style={s.modalTitle}>Neuer Mitarbeiter</p>
         {error && <p style={s.errorBox}>{error}</p>}
         <div style={{ display: "flex", gap: "10px" }}>
-          <div style={{ ...s.field, flex: 1 }}>
+          <div style={{ ...s.field, flex: "0 0 110px" }}>
             <label style={s.label}>Vorname</label>
             <input style={s.input} type="text" placeholder="Max"
               value={form.first_name}
               onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))} />
           </div>
-          <div style={{ ...s.field, flex: 1 }}>
+          <div style={{ ...s.field, flex: 1, minWidth: 0 }}>
             <label style={s.label}>Nachname</label>
             <input style={s.input} type="text" placeholder="Mustermann"
               value={form.last_name}

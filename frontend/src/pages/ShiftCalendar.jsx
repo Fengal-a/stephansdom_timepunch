@@ -75,7 +75,8 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
   const [editingNote, setEditingNote] = useState(false);
   const [noteValue,   setNoteValue]   = useState("");
   const [userNames,   setUserNames]   = useState([]);
-  const inputRef = useRef(null);
+  const inputRef     = useRef(null);
+  const committedRef = useRef(false);
 
   const weekStart = toIso(monday);
   const days      = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
@@ -139,8 +140,10 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
 
   function startEdit(isoDate, role) {
     if (readOnly) return;
+    committedRef.current = false;
     setEditingCell({ date: isoDate, role });
-    setEditValue(cells[`${isoDate}|${role}`] ?? "");
+    const rawVal = cells[`${isoDate}|${role}`] ?? "";
+    setEditValue(resolveDisplayName(rawVal, userNames) || rawVal);
     setSuggestions([]);
     setSuggIdx(-1);
   }
@@ -161,15 +164,22 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
   }
 
   function selectSuggestion(item) {
+    committedRef.current = true;
     setSuggestions([]);
     setEditingCell(null);
     saveCell(editingCell.date, editingCell.role, item.username);
   }
 
   function commitEdit() {
+    if (committedRef.current) { committedRef.current = false; return; }
     if (!editingCell) return;
     setSuggestions([]);
-    saveCell(editingCell.date, editingCell.role, editValue.trim());
+    const trimmed = editValue.trim();
+    const match = userNames.find(u =>
+      u.displayName.toLowerCase() === trimmed.toLowerCase() ||
+      u.username.toLowerCase() === trimmed.toLowerCase()
+    );
+    saveCell(editingCell.date, editingCell.role, match ? match.username : trimmed);
     setEditingCell(null);
   }
 
