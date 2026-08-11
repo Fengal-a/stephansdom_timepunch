@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import Dienstplan from "./Dienstplan";
+import ShiftCalendar from "./ShiftCalendar";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
@@ -543,12 +544,19 @@ export default function Admin({ user, onLogout }) {
                   style={{ ...s.logoutBtn, ...(subPage === "mitarbeiter" ? s.logoutBtnActive : {}) }}
                   onClick={() => setSubPage(subPage === "mitarbeiter" ? "overview" : "mitarbeiter")}
                 >Mitarbeiter</button>
+                <button
+                  style={{ ...s.logoutBtn, ...(subPage === "kalender" ? s.logoutBtnActive : {}) }}
+                  onClick={() => setSubPage(subPage === "kalender" ? "overview" : "kalender")}
+                >Kalender</button>
                 <button style={s.logoutBtn} onClick={() => setPage("dienstplan")}>Dienstplan</button>
                 <button style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
               </div>
             </header>
 
             <main style={s.main}>
+
+              {/* ── Kalender view ── */}
+              {subPage === "kalender" && <ShiftCalendar />}
 
               {/* ── Mitarbeiter list view ── */}
               {subPage === "mitarbeiter" && (

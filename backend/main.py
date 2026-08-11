@@ -13,6 +13,7 @@ from .routers import router as users_router
 from .routers import auth_router
 from .routers import admin_router
 from .routers import messages_router
+from .routers import calendar_router
 from .routers.auth import SECRET_KEY, ALGORITHM, limiter
 
 Base.metadata.create_all(bind=engine)
@@ -110,6 +111,7 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(admin_router)
 app.include_router(messages_router)
+app.include_router(calendar_router)
 
 @app.get("/")
 async def root():
