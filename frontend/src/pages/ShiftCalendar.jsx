@@ -58,6 +58,12 @@ function fmtDay(d) { return d.toLocaleDateString("de-AT", { day: "2-digit", mont
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+function resolveDisplayName(username, userNames) {
+  if (!username) return "";
+  const found = userNames.find(u => u.username === username);
+  return found ? found.displayName : username;
+}
+
 export default function ShiftCalendar({ readOnly = false, highlightName = "" }) {
   const [monday,      setMonday]      = useState(() => getMonday(new Date()));
   const [cells,       setCells]       = useState({});
@@ -77,9 +83,7 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
 
   useEffect(() => { fetchWeek(); }, [weekStart]);
 
-  useEffect(() => {
-    if (!readOnly) fetchUserNames();
-  }, [readOnly]);
+  useEffect(() => { fetchUserNames(); }, []);
 
   useEffect(() => {
     if (editingCell && inputRef.current) inputRef.current.focus();
@@ -100,11 +104,19 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
 
   async function fetchUserNames() {
     try {
-      const res = await fetch(`${API}/admin/users`, { headers: authHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setUserNames(data.filter(u => !u.is_admin).map(u => u.name));
+      const res = await fetch(`${API}/admin/calendar/workers`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const firstNameCount = {};
+      for (const u of data) {
+        firstNameCount[u.first_name] = (firstNameCount[u.first_name] || 0) + 1;
       }
+      setUserNames(data.map(u => ({
+        username: u.username,
+        displayName: firstNameCount[u.first_name] === 1
+          ? u.first_name
+          : `${u.first_name} ${u.last_name.charAt(0)}.`,
+      })));
     } catch {}
   }
 
@@ -138,17 +150,20 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
     setEditValue(val);
     setSuggIdx(-1);
     if (val.trim()) {
-      const matches = userNames.filter(n => n.toLowerCase().includes(val.toLowerCase()));
+      const matches = userNames.filter(u =>
+        u.displayName.toLowerCase().includes(val.toLowerCase()) ||
+        u.username.toLowerCase().includes(val.toLowerCase())
+      );
       setSuggestions(matches.slice(0, 6));
     } else {
       setSuggestions([]);
     }
   }
 
-  function selectSuggestion(name) {
+  function selectSuggestion(item) {
     setSuggestions([]);
     setEditingCell(null);
-    saveCell(editingCell.date, editingCell.role, name);
+    saveCell(editingCell.date, editingCell.role, item.username);
   }
 
   function commitEdit() {
@@ -164,7 +179,7 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
     if (e.key === "Enter") {
       e.preventDefault();
       if (suggIdx >= 0 && suggestions[suggIdx]) selectSuggestion(suggestions[suggIdx]);
-      else commitEdit();
+      else { commitEdit(); }
     }
     if (e.key === "Escape") { setEditingCell(null); setSuggestions([]); }
   }
@@ -210,6 +225,7 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
                   {ROLES.map(role => {
                     const key         = `${iso}|${role}`;
                     const val         = cells[key] ?? "";
+                    const displayVal  = resolveDisplayName(val, userNames);
                     const isEditing   = editingCell?.date === iso && editingCell?.role === role;
                     const isHighlight = highlightName && val === highlightName;
 
@@ -236,13 +252,13 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
                             />
                             {suggestions.length > 0 && (
                               <div style={s.dropdown}>
-                                {suggestions.map((name, idx) => (
+                                {suggestions.map((item, idx) => (
                                   <div
-                                    key={name}
+                                    key={item.username}
                                     style={{ ...s.dropdownItem, ...(idx === suggIdx ? s.dropdownActive : {}) }}
-                                    onMouseDown={() => selectSuggestion(name)}
+                                    onMouseDown={() => selectSuggestion(item)}
                                   >
-                                    {name}
+                                    {item.displayName}
                                   </div>
                                 ))}
                               </div>
@@ -250,7 +266,7 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
                           </div>
                         ) : (
                           <span style={isHighlight ? s.cellHighlightVal : val ? s.cellValue : s.cellEmpty}>
-                            {val || (readOnly ? "" : "—")}
+                            {displayVal || (readOnly ? "" : "—")}
                           </span>
                         )}
                       </td>

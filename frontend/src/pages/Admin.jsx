@@ -50,14 +50,14 @@ function exportCSV(entries, users) {
 // ── Add User Modal ────────────────────────────────────────────────────────────
 
 function AddUserModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ name: "", email: "", password: "", is_admin: false });
+  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", password: "", is_admin: false });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const inviteMode = form.email.trim().length > 0;
 
   async function handleSubmit() {
-    if (!form.name.trim()) {
-      setError("Name ist erforderlich"); return;
+    if (!form.first_name.trim() || !form.last_name.trim()) {
+      setError("Vor- und Nachname sind erforderlich"); return;
     }
     if (!form.email.trim() && !form.password.trim()) {
       setError("E-Mail (Einladung) oder Passwort erforderlich"); return;
@@ -80,8 +80,21 @@ function AddUserModal({ onClose, onCreated }) {
       <div style={s.modal} onClick={e => e.stopPropagation()}>
         <p style={s.modalTitle}>Neuer Mitarbeiter</p>
         {error && <p style={s.errorBox}>{error}</p>}
+        <div style={{ display: "flex", gap: "10px" }}>
+          <div style={{ ...s.field, flex: 1 }}>
+            <label style={s.label}>Vorname</label>
+            <input style={s.input} type="text" placeholder="Max"
+              value={form.first_name}
+              onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))} />
+          </div>
+          <div style={{ ...s.field, flex: 1 }}>
+            <label style={s.label}>Nachname</label>
+            <input style={s.input} type="text" placeholder="Mustermann"
+              value={form.last_name}
+              onChange={e => setForm(p => ({ ...p, last_name: e.target.value }))} />
+          </div>
+        </div>
         {[
-          { key: "name",     label: "Name",                                        type: "text",     placeholder: "Max Mustermann" },
           { key: "email",    label: "E-Mail — Einladung senden (empfohlen)",        type: "email",    placeholder: "max@beispiel.at" },
           { key: "password", label: inviteMode ? "Passwort (optional bei Einladung)" : "Passwort", type: "password", placeholder: "••••••••" },
         ].map(f => (
@@ -268,7 +281,7 @@ function ResetPasswordModal({ user: targetUser, onClose }) {
 // ── Edit User Modal ───────────────────────────────────────────────────────────
 
 function EditUserModal({ user: targetUser, onClose, onSaved }) {
-  const [form,     setForm]     = useState({ name: targetUser.name, username: targetUser.username, email: targetUser.email ?? "", is_admin: targetUser.is_admin });
+  const [form,     setForm]     = useState({ first_name: targetUser.first_name ?? "", last_name: targetUser.last_name ?? "", username: targetUser.username, email: targetUser.email ?? "", is_admin: targetUser.is_admin });
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
   const [pwError,  setPwError]  = useState("");
@@ -277,7 +290,7 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
   const [pwSaved,  setPwSaved]  = useState(false);
 
   async function handleSave() {
-    if (!form.name.trim() || !form.username.trim()) { setError("Name und Benutzername sind erforderlich"); return; }
+    if (!form.first_name.trim() || !form.last_name.trim() || !form.username.trim()) { setError("Vor-, Nachname und Benutzername sind erforderlich"); return; }
     setLoading(true); setError("");
     try {
       const res = await fetch(`${API}/admin/users/${targetUser.id}`, {
@@ -311,8 +324,19 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
       <div style={s.modal} onClick={e => e.stopPropagation()}>
         <p style={s.modalTitle}>{targetUser.name}</p>
         {error && <p style={s.errorBox}>{error}</p>}
+        <div style={{ display: "flex", gap: "10px" }}>
+          <div style={{ ...s.field, flex: 1 }}>
+            <label style={s.label}>Vorname</label>
+            <input style={s.input} type="text" value={form.first_name}
+              onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))} />
+          </div>
+          <div style={{ ...s.field, flex: 1 }}>
+            <label style={s.label}>Nachname</label>
+            <input style={s.input} type="text" value={form.last_name}
+              onChange={e => setForm(p => ({ ...p, last_name: e.target.value }))} />
+          </div>
+        </div>
         {[
-          { key: "name",     label: "Name",          type: "text"  },
           { key: "username", label: "Benutzername",   type: "text"  },
           { key: "email",    label: "E-Mail",         type: "email" },
         ].map(f => (

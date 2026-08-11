@@ -6,8 +6,9 @@ from typing import Optional
 # ── User schemas ──────────────────────────────────────────────────────────────
 
 class UserCreate(BaseModel):
-    name: str
-    username: str
+    first_name: str
+    last_name: str
+    username: Optional[str] = None
     password: Optional[str] = None
     email: Optional[str] = None
     is_admin: bool = False
@@ -16,6 +17,8 @@ class UserCreate(BaseModel):
 class UserOut(BaseModel):
     id: int
     name: str
+    first_name: str
+    last_name: str
     username: str
     email: Optional[str] = None
     is_admin: bool

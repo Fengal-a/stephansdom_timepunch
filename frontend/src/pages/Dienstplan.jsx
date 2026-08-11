@@ -20,7 +20,7 @@ export default function Dienstplan({ onSwipeBack }) {
       </header>
 
       <div style={s.content}>
-        <ShiftCalendar readOnly={true} highlightName={user.name ?? ""} />
+        <ShiftCalendar readOnly={true} highlightName={user.username ?? ""} />
       </div>
     </div>
   );

@@ -23,12 +23,11 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-def _generate_username(name: str) -> str:
-    result = name.lower()
+def _generate_username(last_name: str) -> str:
+    result = last_name.lower()
     for char, repl in {'ä':'ae','ö':'oe','ü':'ue','ß':'ss'}.items():
         result = result.replace(char, repl)
-    result = re.sub(r'[^a-z0-9\s]', '', result)
-    result = re.sub(r'\s+', '.', result.strip())
+    result = re.sub(r'[^a-z0-9]', '', result)
     return result or "user"
 
 
@@ -47,7 +46,7 @@ def list_all_users(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    return db.query(User).order_by(User.name).all()
+    return db.query(User).order_by(User.last_name, User.first_name).all()
 
 
 @router.post("/users", response_model=UserOut)
@@ -56,16 +55,19 @@ def create_user(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
+    if not payload.first_name.strip() or not payload.last_name.strip():
+        raise HTTPException(status_code=400, detail="Vor- und Nachname sind erforderlich")
     if not payload.email and not payload.password:
-        raise HTTPException(status_code=400, detail="E-Mail oder Passwort erforderlich")
+        raise HTTPException(status_code=400, detail="E-Mail (Einladung) oder Passwort erforderlich")
 
-    # Resolve username: use provided, or auto-generate from name for invite flow
+    first_name = payload.first_name.strip()
+    last_name  = payload.last_name.strip()
+    full_name  = f"{first_name} {last_name}"
+
     if payload.username:
         username = payload.username.strip().lower()
-    elif payload.email:
-        username = _unique_username(db, _generate_username(payload.name))
     else:
-        raise HTTPException(status_code=400, detail="Benutzername erforderlich")
+        username = _unique_username(db, _generate_username(last_name))
 
     if db.query(User).filter(User.username == username).first():
         raise HTTPException(status_code=409, detail="Benutzername bereits vergeben")
@@ -76,7 +78,9 @@ def create_user(
     raw_pw = payload.password or secrets.token_urlsafe(16)
     hashed = bcrypt.hashpw(raw_pw.encode(), bcrypt.gensalt()).decode()
     user = User(
-        name=payload.name,
+        name=full_name,
+        first_name=first_name,
+        last_name=last_name,
         username=username,
         email=payload.email.lower() if payload.email else None,
         password_hash=hashed,
@@ -127,7 +131,13 @@ def update_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if "name" in payload:
+    if "first_name" in payload or "last_name" in payload:
+        if "first_name" in payload:
+            user.first_name = payload["first_name"].strip()
+        if "last_name" in payload:
+            user.last_name = payload["last_name"].strip()
+        user.name = f"{user.first_name} {user.last_name}".strip()
+    elif "name" in payload:
         user.name = payload["name"].strip()
     if "username" in payload:
         new_username = payload["username"].strip().lower()
