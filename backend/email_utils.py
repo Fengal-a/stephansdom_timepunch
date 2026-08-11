@@ -16,7 +16,9 @@ def _send(to: str, subject: str, html: str):
     msg["From"]    = f"TimePunch <{SMTP_USER}>"
     msg["To"]      = to
     msg.attach(MIMEText(html, "html"))
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+    with smtplib.SMTP("smtp.gmail.com", 587) as s:
+        s.ehlo()
+        s.starttls()
         s.login(SMTP_USER, SMTP_PASSWORD)
         s.sendmail(SMTP_USER, to, msg.as_string())
 
