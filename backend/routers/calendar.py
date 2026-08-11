@@ -65,7 +65,7 @@ def set_week_cells(
     db.query(ShiftCell).filter(
         ShiftCell.date >= monday,
         ShiftCell.date <= sunday,
-    ).delete()
+    ).delete(synchronize_session=False)
 
     for c in payload.get("cells", []):
         name = (c.get("worker_name") or "").strip()
