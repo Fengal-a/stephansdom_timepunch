@@ -53,7 +53,9 @@ function addDays(d, n) {
   return date;
 }
 
-function toIso(d)  { return d.toISOString().split("T")[0]; }
+function toIso(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 function fmtDay(d) { return d.toLocaleDateString("de-AT", { day: "2-digit", month: "2-digit" }); }
 
 // ── Main component ────────────────────────────────────────────────────────────
