@@ -13,3 +13,6 @@ frontend/dist/
 
 # Uploads (user content)
 uploads/
+
+# Random files
+TODO.txt

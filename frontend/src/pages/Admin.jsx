@@ -50,7 +50,7 @@ function exportCSV(entries, users) {
 // ── Add User Modal ────────────────────────────────────────────────────────────
 
 function AddUserModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", password: "", is_admin: false });
+  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const inviteMode = form.email.trim().length > 0;
@@ -105,13 +105,6 @@ function AddUserModal({ onClose, onCreated }) {
             />
           </div>
         ))}
-        <div style={s.checkRow}>
-          <input
-            id="is_admin" type="checkbox" checked={form.is_admin}
-            onChange={e => setForm(p => ({ ...p, is_admin: e.target.checked }))}
-          />
-          <label htmlFor="is_admin" style={{ ...s.label, margin: 0 }}>Administrator</label>
-        </div>
         <div style={s.modalBtns}>
           <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
           <button style={s.confirmBtn} onClick={handleSubmit} disabled={loading}>
@@ -345,14 +338,6 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
             />
           </div>
         ))}
-        <div style={s.checkRow}>
-          <input
-            id="edit_admin" type="checkbox" checked={form.is_admin}
-            onChange={e => setForm(p => ({ ...p, is_admin: e.target.checked }))}
-          />
-          <label htmlFor="edit_admin" style={{ ...s.label, margin: 0 }}>Administrator</label>
-        </div>
-
         <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
           <label style={s.label}>Passwort zurücksetzen</label>
           <div style={{ display: "flex", gap: "8px" }}>

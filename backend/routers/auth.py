@@ -64,15 +64,15 @@ def get_current_user(
     payload = decode_token(token)
     user = db.query(User).filter(User.id == int(payload["sub"])).first()
     if not user:
-        raise HTTPException(status_code=401, detail="User not found")
+        raise HTTPException(status_code=401, detail="Benutzer nicht gefunden")
     if payload.get("tv") != user.token_version:
-        raise HTTPException(status_code=401, detail="Session expired")
+        raise HTTPException(status_code=401, detail="Sitzung abgelaufen")
     return user
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+        raise HTTPException(status_code=403, detail="Adminrechte benötigt")
     return current_user
 
 
@@ -87,7 +87,7 @@ def login(
 ):
     user = db.query(User).filter(User.username == form.username).first()
     if not user or not verify_password(form.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(status_code=401, detail="Ungültiger Benutzername oder Passwort")
 
     now = datetime.now(timezone.utc)
     if user.last_login_at is not None:
