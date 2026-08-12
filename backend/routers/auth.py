@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 import os
 import secrets
+import threading
 import jwt
 import bcrypt
 
@@ -18,8 +19,39 @@ from ..email_utils import send_reset_email
 router = APIRouter(prefix="/auth", tags=["auth"])
 limiter = Limiter(key_func=get_remote_address)
 
+# ── Login lockout (in-memory) ─────────────────────────────────────────────────
+_lockout: dict[str, dict] = {}
+_lockout_lock = threading.Lock()
+LOCKOUT_AFTER   = 5   # failed attempts before lockout
+LOCKOUT_MINUTES = 15
+
+def _check_lockout(ip: str) -> None:
+    with _lockout_lock:
+        rec = _lockout.get(ip)
+        if not rec:
+            return
+        until = rec.get("until")
+        if until and datetime.now(timezone.utc) < until:
+            mins = int((until - datetime.now(timezone.utc)).total_seconds() / 60) + 1
+            raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte in {mins} Minute(n) erneut versuchen.")
+        elif until:
+            _lockout.pop(ip, None)  # lockout expired, clear it
+
+def _record_failure(ip: str) -> None:
+    with _lockout_lock:
+        rec = _lockout.setdefault(ip, {"count": 0, "until": None})
+        rec["count"] += 1
+        if rec["count"] >= LOCKOUT_AFTER:
+            rec["until"] = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)
+
+def _clear_lockout(ip: str) -> None:
+    with _lockout_lock:
+        _lockout.pop(ip, None)
+
 # ── Config ────────────────────────────────────────────────────────────────────
-SECRET_KEY = os.environ.get("SECRET_KEY", "change-this-to-a-random-secret-in-production")
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY environment variable is not set")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 12
 
@@ -85,9 +117,15 @@ def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
+    ip = get_remote_address(request)
+    _check_lockout(ip)
+
     user = db.query(User).filter(User.username == form.username).first()
     if not user or not verify_password(form.password, user.password_hash):
+        _record_failure(ip)
         raise HTTPException(status_code=401, detail="Ungültiger Benutzername oder Passwort")
+
+    _clear_lockout(ip)
 
     now = datetime.now(timezone.utc)
     if user.last_login_at is not None:
