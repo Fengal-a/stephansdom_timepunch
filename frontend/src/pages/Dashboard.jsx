@@ -31,6 +31,7 @@ export default function Dashboard({ user, onLogout }) {
   const [entries, setEntries]     = useState([]);
   const [loading, setLoading]     = useState(true);
   const [punching, setPunching]   = useState(false);
+  const [punchError, setPunchError] = useState("");
 
   // Note modal
   const [showNote, setShowNote]   = useState(false);
@@ -146,6 +147,7 @@ export default function Dashboard({ user, onLogout }) {
 
   async function doPunch(noteText) {
     setPunching(true);
+    setPunchError("");
     setShowNote(false);
     try {
       const res = await fetch(`${API}/users/punch`, {
@@ -156,8 +158,13 @@ export default function Dashboard({ user, onLogout }) {
       if (res.ok) {
         await fetchStatus();
         await fetchEntries();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setPunchError(data.detail ?? "Fehler beim Stempeln.");
       }
-    } catch {}
+    } catch {
+      setPunchError("Verbindungsfehler.");
+    }
     setPunching(false);
   }
 
@@ -245,6 +252,11 @@ export default function Dashboard({ user, onLogout }) {
                   )}
                 </button>
               </div>
+
+              {/* Punch error */}
+              {punchError && (
+                <p style={s.punchErr}>{punchError}</p>
+              )}
 
               {/* Stats row */}
               <div style={s.statsRow}>
@@ -584,6 +596,13 @@ const s = {
     border: "3px solid rgba(255,255,255,0.2)",
     borderTopColor: "#fff", borderRadius: "50%",
     display: "inline-block", animation: "spin 0.7s linear infinite",
+  },
+
+  punchErr: {
+    margin: 0, fontSize: "12px", color: ORANGE,
+    textAlign: "center", maxWidth: "280px",
+    padding: "8px 14px", borderRadius: "4px",
+    background: "rgba(245,98,15,0.08)", border: "1px solid rgba(245,98,15,0.2)",
   },
 
   // ── Stats row ──────────────────────────────────────────────────────────────

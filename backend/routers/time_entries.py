@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from typing import List, Optional
+from zoneinfo import ZoneInfo
+import ipaddress
+import os
 
 from ..database import get_db
 from ..models import User, TimeEntry
@@ -9,6 +12,29 @@ from ..schemas import PunchResponse, PunchRequest, TimeEntryOut, UserOut, UserCr
 from .auth import get_current_user
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+OFFICE_NETWORKS = os.environ.get("OFFICE_NETWORKS", "")
+VIENNA_TZ       = ZoneInfo("Europe/Vienna")
+CHECKIN_CUTOFF  = (9, 5)  # 09:05 Vienna time
+
+
+def _is_office_ip(client_ip: str) -> bool:
+    if not OFFICE_NETWORKS:
+        return True  # restriction disabled (local dev)
+    try:
+        addr = ipaddress.ip_address(client_ip)
+        for cidr in OFFICE_NETWORKS.split(","):
+            if addr in ipaddress.ip_network(cidr.strip(), strict=False):
+                return True
+    except ValueError:
+        pass
+    return False
+
+
+def _past_checkin_cutoff() -> bool:
+    now = datetime.now(VIENNA_TZ)
+    cutoff_h, cutoff_m = CHECKIN_CUTOFF
+    return (now.hour, now.minute) > (cutoff_h, cutoff_m)
 
 
 # ── User management ───────────────────────────────────────────────────────────
@@ -35,20 +61,30 @@ def list_active_users(db: Session = Depends(get_db)):
 
 @router.post("/punch", response_model=PunchResponse)
 def punch(
+    request: Request,
     payload: PunchRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Toggle punch state for the authenticated user.
-    - No open entry      → punch IN
-    - Open entry exists  → punch OUT (saves optional note + duration)
-    """
     open_entry = (
         db.query(TimeEntry)
         .filter(TimeEntry.user_id == current_user.id, TimeEntry.punch_out.is_(None))
         .first()
     )
+    is_punch_in = open_entry is None
+
+    if not current_user.is_admin:
+        client_ip = request.headers.get("X-Real-IP") or request.client.host
+        if not _is_office_ip(client_ip):
+            raise HTTPException(
+                status_code=403,
+                detail="Stempeln nur im Stephansdom-WLAN möglich.",
+            )
+        if is_punch_in and _past_checkin_cutoff():
+            raise HTTPException(
+                status_code=403,
+                detail="Einstempeln nach 09:05 Uhr nicht möglich. Bitte den Administrator kontaktieren.",
+            )
 
     now = datetime.now(timezone.utc)
 
