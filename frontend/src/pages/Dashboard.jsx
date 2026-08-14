@@ -30,8 +30,9 @@ export default function Dashboard({ user, onLogout }) {
   const [status, setStatus]       = useState(null);   // { clocked_in, punch_in }
   const [entries, setEntries]     = useState([]);
   const [loading, setLoading]     = useState(true);
-  const [punching, setPunching]   = useState(false);
+  const [punching, setPunching]     = useState(false);
   const [punchError, setPunchError] = useState("");
+  const [adminMsgs, setAdminMsgs]   = useState([]);
 
   // Note modal
   const [showNote, setShowNote]   = useState(false);
@@ -101,6 +102,7 @@ export default function Dashboard({ user, onLogout }) {
   useEffect(() => {
     fetchStatus();
     fetchEntries();
+    if (!user.is_admin) fetchInbox();
   }, []);
 
   // Tick elapsed time every 30s while clocked in
@@ -134,6 +136,23 @@ export default function Dashboard({ user, onLogout }) {
       if (res.ok) setEntries(await res.json());
     } catch {}
     setLoading(false);
+  }
+
+  async function fetchInbox() {
+    try {
+      const res = await fetch(`${API}/messages/mine`, { headers: authHeaders() });
+      if (res.ok) setAdminMsgs(await res.json());
+    } catch {}
+  }
+
+  async function markMsgRead(id) {
+    try {
+      await fetch(`${API}/messages/mine/${id}/read`, {
+        method: "PATCH",
+        headers: authHeaders(),
+      });
+      setAdminMsgs(prev => prev.map(m => m.id === id ? { ...m, is_read: true } : m));
+    } catch {}
   }
 
   function handlePunchPress() {
@@ -278,6 +297,29 @@ export default function Dashboard({ user, onLogout }) {
                   </span>
                 </div>
               </div>
+
+              {/* Admin messages inbox (employees only) */}
+              {!user.is_admin && adminMsgs.length > 0 && (
+                <div style={s.inboxBox}>
+                  <p style={s.logTitle}>NACHRICHTEN VOM ADMIN</p>
+                  {adminMsgs.map(m => (
+                    <div
+                      key={m.id}
+                      style={{ ...s.inboxMsg, ...(m.is_read ? {} : s.inboxMsgUnread) }}
+                      onClick={() => !m.is_read && markMsgRead(m.id)}
+                    >
+                      <span style={s.inboxDate}>
+                        {new Date(m.sent_at).toLocaleString("de-AT", {
+                          day: "2-digit", month: "2-digit", year: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                        {!m.is_read && <span style={s.unreadDot} />}
+                      </span>
+                      <span style={s.inboxBody}>{m.body}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Today's entries log */}
               {entries.length > 0 && (
@@ -618,6 +660,33 @@ const s = {
   statDivider: { width: "1px", background: BORDER, flexShrink: 0 },
   statLabel:   { fontSize: "10px", color: MUTED, letterSpacing: "0.12em", textTransform: "uppercase" },
   statValue:   { fontSize: "22px", fontWeight: "700", color: TEXT, letterSpacing: "-0.02em", fontFamily: "'DM Sans', sans-serif" },
+
+  // ── Admin inbox (employee view) ────────────────────────────────────────────
+  inboxBox: {
+    width: "100%", background: SURFACE,
+    border: `1px solid ${BORDER}`, borderRadius: "6px",
+    padding: "14px", display: "flex", flexDirection: "column", gap: "10px",
+  },
+  inboxMsg: {
+    display: "flex", flexDirection: "column", gap: "4px",
+    padding: "10px 12px", borderRadius: "4px",
+    background: BLACK, border: `1px solid ${BORDER}`,
+    cursor: "default",
+  },
+  inboxMsgUnread: {
+    borderColor: "rgba(245,98,15,0.4)",
+    background: "rgba(245,98,15,0.05)",
+    cursor: "pointer",
+  },
+  inboxDate: {
+    fontSize: "10px", color: MUTED, letterSpacing: "0.08em",
+    display: "flex", alignItems: "center", gap: "6px",
+  },
+  inboxBody: { fontSize: "13px", color: TEXT, lineHeight: "1.5" },
+  unreadDot: {
+    display: "inline-block", width: "7px", height: "7px",
+    borderRadius: "50%", background: ORANGE, flexShrink: 0,
+  },
 
   // ── Today's log ────────────────────────────────────────────────────────────
   log: {

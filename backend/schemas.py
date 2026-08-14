@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 
 # ── User schemas ──────────────────────────────────────────────────────────────
@@ -64,11 +64,16 @@ class MessageCreate(BaseModel):
     body: str
 
 class MessageOut(BaseModel):
-    id:          int
-    sender_id:   int
-    sender_name: str
-    body:        str
-    sent_at:     datetime
-    is_read:     bool
+    id:           int
+    sender_id:    int
+    sender_name:  str
+    recipient_id: Optional[int] = None
+    body:         str
+    sent_at:      datetime
+    is_read:      bool
 
     model_config = {"from_attributes": True}
+
+class AdminMessageSend(BaseModel):
+    recipient_ids: List[int]  # empty list = send to all non-admin employees
+    body: str

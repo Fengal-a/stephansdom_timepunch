@@ -426,6 +426,86 @@ function AdminLunchModal({ entry, onClose, onSaved }) {
   );
 }
 
+// ── Admin Compose Modal ───────────────────────────────────────────────────────
+
+function ComposeModal({ users, onClose, onSent }) {
+  const [selected, setSelected] = useState(new Set());
+  const [allChk,   setAllChk]   = useState(false);
+  const [body,     setBody]     = useState("");
+  const [sending,  setSending]  = useState(false);
+  const [error,    setError]    = useState("");
+
+  function toggleAll(checked) {
+    setAllChk(checked);
+    setSelected(checked ? new Set(users.map(u => u.id)) : new Set());
+  }
+
+  function toggleUser(id) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      setAllChk(next.size === users.length);
+      return next;
+    });
+  }
+
+  async function handleSend() {
+    if (selected.size === 0) { setError("Bitte mindestens einen Empfänger auswählen"); return; }
+    if (!body.trim())        { setError("Nachricht darf nicht leer sein"); return; }
+    setSending(true); setError("");
+    try {
+      const res = await fetch(`${API}/messages/admin-send`, {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({ recipient_ids: [...selected], body: body.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      onSent();
+      onClose();
+    } catch { setError("Fehler beim Senden"); }
+    setSending(false);
+  }
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={e => e.stopPropagation()}>
+        <p style={s.modalTitle}>Nachricht senden</p>
+        {error && <p style={s.errorBox}>{error}</p>}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "180px", overflowY: "auto" }}>
+          <label style={{ ...s.label, display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+            <input type="checkbox" checked={allChk} onChange={e => toggleAll(e.target.checked)} />
+            Alle auswählen
+          </label>
+          {users.map(u => (
+            <label key={u.id} style={{ ...s.label, display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", textTransform: "none", letterSpacing: 0 }}>
+              <input type="checkbox" checked={selected.has(u.id)} onChange={() => toggleUser(u.id)} />
+              {u.name}
+            </label>
+          ))}
+        </div>
+
+        <div style={s.field}>
+          <label style={s.label}>Nachricht</label>
+          <textarea
+            style={{ ...s.input, resize: "vertical", minHeight: "80px", lineHeight: "1.5" }}
+            placeholder="Ihre Nachricht…"
+            value={body}
+            onChange={e => setBody(e.target.value)}
+            autoFocus
+          />
+        </div>
+
+        <div style={s.modalBtns}>
+          <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+          <button style={s.confirmBtn} onClick={handleSend} disabled={sending}>
+            {sending ? "..." : "Senden"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Admin Component ──────────────────────────────────────────────────────
 
 export default function Admin({ user, onLogout }) {
@@ -442,6 +522,8 @@ export default function Admin({ user, onLogout }) {
   const [loading,       setLoading]       = useState(true);
   const [page,          setPage]          = useState("admin"); // "admin" | "dienstplan"
   const [subPage,       setSubPage]       = useState("overview"); // "overview" | "mitarbeiter"
+  const [showCompose,   setShowCompose]   = useState(false);
+  const [expandedMsgs,  setExpandedMsgs]  = useState(new Set());
   const touchStartX                       = useRef(null);
 
   useEffect(() => { fetchAll(); }, []);
@@ -472,6 +554,21 @@ export default function Admin({ user, onLogout }) {
   async function handleDeleteMessage(id) {
     await fetch(`${API}/messages/${id}`, { method: "DELETE", headers: authHeaders() });
     setMessages(prev => prev.filter(m => m.id !== id));
+  }
+
+  async function handleAdminSend(recipientIds, body) {
+    await fetch(`${API}/messages/admin-send`, {
+      method: "POST", headers: authHeaders(),
+      body: JSON.stringify({ recipient_ids: recipientIds, body }),
+    });
+  }
+
+  function toggleMsg(id) {
+    setExpandedMsgs(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   }
 
   async function handleAdminPunch(userId) {
@@ -561,7 +658,10 @@ export default function Admin({ user, onLogout }) {
                 <section style={s.section}>
                   <div style={s.sectionHeader}>
                     <p style={s.sectionTitle}>MITARBEITER</p>
-                    <span style={s.badge}>{users.filter(u => !u.is_admin).length}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span style={s.badge}>{users.filter(u => !u.is_admin).length}</span>
+                      <button style={s.ghostBtn} onClick={() => setShowCompose(true)}>✉ Nachricht senden</button>
+                    </div>
                   </div>
                   {users.filter(u => !u.is_admin).map(u => {
                     const isClocked = activeUserIds.has(u.id);
@@ -601,27 +701,37 @@ export default function Admin({ user, onLogout }) {
                 {messages.length === 0 ? (
                   <p style={s.empty}>Keine Nachrichten</p>
                 ) : (
-                  messages.map(m => (
-                    <div key={m.id} style={{ ...s.msgRow, ...(m.is_read ? {} : s.msgRowUnread) }}>
-                      <div style={s.msgMeta}>
-                        <span style={s.msgSender}>{m.sender_name}</span>
-                        <span style={s.msgTime}>
-                          {new Date(m.sent_at).toLocaleString("de-AT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
-                      <p style={s.msgBody}>{m.body}</p>
-                      <div style={s.msgActions}>
-                        {!m.is_read && (
-                          <button style={s.msgReadBtn} onClick={() => handleMarkRead(m.id)}>
-                            Als gelesen markieren
-                          </button>
+                  messages.map(m => {
+                    const open = expandedMsgs.has(m.id);
+                    return (
+                      <div key={m.id} style={{ ...s.msgRow, ...(m.is_read ? {} : s.msgRowUnread) }}>
+                        <div style={{ ...s.msgMeta, cursor: "pointer" }} onClick={() => toggleMsg(m.id)}>
+                          <span style={s.msgSender}>{m.sender_name}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <span style={s.msgTime}>
+                              {new Date(m.sent_at).toLocaleString("de-AT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                            <span style={{ fontSize: "10px", color: MUTED }}>{open ? "▲" : "▼"}</span>
+                          </div>
+                        </div>
+                        {open && (
+                          <>
+                            <p style={s.msgBody}>{m.body}</p>
+                            <div style={s.msgActions}>
+                              {!m.is_read && (
+                                <button style={s.msgReadBtn} onClick={() => handleMarkRead(m.id)}>
+                                  Als gelesen markieren
+                                </button>
+                              )}
+                              <button style={s.deleteBtn} onClick={() => handleDeleteMessage(m.id)}>
+                                Löschen
+                              </button>
+                            </div>
+                          </>
                         )}
-                        <button style={s.deleteBtn} onClick={() => handleDeleteMessage(m.id)}>
-                          Löschen
-                        </button>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </section>
 
@@ -780,6 +890,13 @@ export default function Admin({ user, onLogout }) {
       </div>
 
       {/* Modals rendered outside the transformed slideTrack so position:fixed works correctly */}
+      {showCompose && (
+        <ComposeModal
+          users={users.filter(u => !u.is_admin)}
+          onClose={() => setShowCompose(false)}
+          onSent={() => {}}
+        />
+      )}
       {showMonthlyExport && (
         <MonthlyExportModal
           users={users.filter(u => !u.is_admin)}
