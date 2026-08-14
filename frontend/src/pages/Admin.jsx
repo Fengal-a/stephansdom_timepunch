@@ -106,8 +106,8 @@ function AddUserModal({ onClose, onCreated }) {
           </div>
         ))}
         <div style={s.modalBtns}>
-          <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
-          <button style={s.confirmBtn} onClick={handleSubmit} disabled={loading}>
+          <button className="btn-ghost-hover" style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+          <button className="btn-orange-hover" style={s.confirmBtn} onClick={handleSubmit} disabled={loading}>
             {loading ? "..." : "Erstellen"}
           </button>
         </div>
@@ -198,8 +198,8 @@ function MonthlyExportModal({ users, onClose }) {
           </div>
         </div>
         <div style={s.modalBtns}>
-          <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
-          <button style={s.confirmBtn} onClick={handleExport} disabled={loading || !userId}>
+          <button className="btn-ghost-hover" style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+          <button className="btn-orange-hover" style={s.confirmBtn} onClick={handleExport} disabled={loading || !userId}>
             {loading ? "..." : "↓ CSV herunterladen"}
           </button>
         </div>
@@ -242,7 +242,7 @@ function ResetPasswordModal({ user: targetUser, onClose }) {
             <p style={{ margin: 0, fontSize: "13px", color: "#22c55e" }}>
               Passwort erfolgreich geändert.
             </p>
-            <button style={s.confirmBtn} onClick={onClose}>Schließen</button>
+            <button className="btn-orange-hover" style={s.confirmBtn} onClick={onClose}>Schließen</button>
           </>
         ) : (
           <>
@@ -257,8 +257,8 @@ function ResetPasswordModal({ user: targetUser, onClose }) {
               />
             </div>
             <div style={s.modalBtns}>
-              <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
-              <button style={s.confirmBtn} onClick={handleSubmit} disabled={loading}>
+              <button className="btn-ghost-hover" style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+              <button className="btn-orange-hover" style={s.confirmBtn} onClick={handleSubmit} disabled={loading}>
                 {loading ? "..." : "Zurücksetzen"}
               </button>
             </div>
@@ -348,7 +348,7 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
               onKeyDown={e => e.key === "Enter" && handlePasswordSave()}
             />
             <button
-              style={{ ...s.confirmBtn, flex: "none", padding: "0 14px", minWidth: "72px" }}
+              className="btn-orange-hover" style={{ ...s.confirmBtn, flex: "none", padding: "0 14px", minWidth: "72px" }}
               onClick={handlePasswordSave}
               disabled={pwLoading || !password}
             >
@@ -359,8 +359,8 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
         </div>
 
         <div style={s.modalBtns}>
-          <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
-          <button style={s.confirmBtn} onClick={handleSave} disabled={loading}>
+          <button className="btn-ghost-hover" style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+          <button className="btn-orange-hover" style={s.confirmBtn} onClick={handleSave} disabled={loading}>
             {loading ? "..." : "Speichern"}
           </button>
         </div>
@@ -416,8 +416,8 @@ function AdminLunchModal({ entry, onClose, onSaved }) {
           </div>
         </div>
         <div style={s.modalBtns}>
-          <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
-          <button style={s.confirmBtn} onClick={handleSave} disabled={loading}>
+          <button className="btn-ghost-hover" style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+          <button className="btn-orange-hover" style={s.confirmBtn} onClick={handleSave} disabled={loading}>
             {loading ? "..." : "Speichern"}
           </button>
         </div>
@@ -496,8 +496,8 @@ function ComposeModal({ users, onClose, onSent }) {
         </div>
 
         <div style={s.modalBtns}>
-          <button style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
-          <button style={s.confirmBtn} onClick={handleSend} disabled={sending}>
+          <button className="btn-ghost-hover" style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+          <button className="btn-orange-hover" style={s.confirmBtn} onClick={handleSend} disabled={sending}>
             {sending ? "..." : "Senden"}
           </button>
         </div>
@@ -639,15 +639,17 @@ export default function Admin({ user, onLogout }) {
               </div>
               <div style={s.headerRight}>
                 <button
+                  className="btn-ghost-hover"
                   style={{ ...s.logoutBtn, ...(subPage === "overview" ? s.logoutBtnActive : {}) }}
                   onClick={() => setSubPage("overview")}
                 >Home</button>
                 <button
+                  className="btn-ghost-hover"
                   style={{ ...s.logoutBtn, ...(subPage === "mitarbeiter" ? s.logoutBtnActive : {}) }}
                   onClick={() => setSubPage(subPage === "mitarbeiter" ? "overview" : "mitarbeiter")}
                 >Mitarbeiter</button>
-                <button style={s.logoutBtn} onClick={() => setPage("dienstplan")}>Dienstplan</button>
-                <button style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
+                <button className="btn-ghost-hover" style={s.logoutBtn} onClick={() => setPage("dienstplan")}>Dienstplan</button>
+                <button className="btn-ghost-hover" style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
               </div>
             </header>
 
@@ -660,7 +662,7 @@ export default function Admin({ user, onLogout }) {
                     <p style={s.sectionTitle}>MITARBEITER</p>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <span style={s.badge}>{users.filter(u => !u.is_admin).length}</span>
-                      <button style={s.ghostBtn} onClick={() => setShowCompose(true)}>✉ Nachricht senden</button>
+                      <button className="btn-ghost-hover" style={s.ghostBtn} onClick={() => setShowCompose(true)}>✉ Nachricht senden</button>
                     </div>
                   </div>
                   {users.filter(u => !u.is_admin).map(u => {
@@ -678,7 +680,7 @@ export default function Admin({ user, onLogout }) {
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                           <span style={{ fontSize: "12px", color: statusColor }}>{statusLabel}</span>
-                          <button style={s.editBtn} onClick={() => setEditUser(u)}>
+                          <button className="btn-ghost-hover" style={s.editBtn} onClick={() => setEditUser(u)}>
                             ↺ Stammdaten ändern
                           </button>
                         </div>
@@ -719,11 +721,11 @@ export default function Admin({ user, onLogout }) {
                             <p style={s.msgBody}>{m.body}</p>
                             <div style={s.msgActions}>
                               {!m.is_read && (
-                                <button style={s.msgReadBtn} onClick={() => handleMarkRead(m.id)}>
+                                <button className="btn-ghost-hover" style={s.msgReadBtn} onClick={() => handleMarkRead(m.id)}>
                                   Als gelesen markieren
                                 </button>
                               )}
-                              <button style={s.deleteBtn} onClick={() => handleDeleteMessage(m.id)}>
+                              <button className="btn-danger-hover" style={s.deleteBtn} onClick={() => handleDeleteMessage(m.id)}>
                                 Löschen
                               </button>
                             </div>
@@ -753,7 +755,7 @@ export default function Admin({ user, onLogout }) {
                           <span style={s.activeSince}>seit {formatTime(ae.punch_in)}</span>
                         </div>
                         <button
-                          style={s.punchOutBtn}
+                          className="btn-ghost-hover" style={s.punchOutBtn}
                           onClick={() => handleAdminPunch(ae.user_id)}
                         >
                           Ausstempeln
@@ -768,16 +770,16 @@ export default function Admin({ user, onLogout }) {
               <div style={s.toolbar}>
                 <p style={s.sectionTitle}>HEUTE — {formatDate(new Date().toISOString())}</p>
                 <div style={s.toolbarBtns}>
-                  <button style={s.ghostBtn} disabled title="Demnächst verfügbar">
+                  <button className="btn-ghost-hover" style={s.ghostBtn} disabled title="Demnächst verfügbar">
                     📅 Vergangene Tage
                   </button>
-                  <button style={s.ghostBtn} onClick={() => exportCSV(entries, users)}>
+                  <button className="btn-ghost-hover" style={s.ghostBtn} onClick={() => exportCSV(entries, users)}>
                     ↓ CSV Export
                   </button>
-                  <button style={s.ghostBtn} onClick={() => setShowMonthlyExport(true)}>
+                  <button className="btn-ghost-hover" style={s.ghostBtn} onClick={() => setShowMonthlyExport(true)}>
                     ↓ Monatsexport
                   </button>
-                  <button style={s.orangeBtn} onClick={() => setShowAddUser(true)}>
+                  <button className="btn-orange-hover" style={s.orangeBtn} onClick={() => setShowAddUser(true)}>
                     + Mitarbeiter
                   </button>
                 </div>
@@ -839,13 +841,13 @@ export default function Admin({ user, onLogout }) {
                                   {e.note && <p style={s.entryNote}>"{e.note}"</p>}
                                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
                                     <button
-                                      style={s.lunchEntryBtn}
+                                      className="btn-ghost-hover" style={s.lunchEntryBtn}
                                       onClick={() => setLunchEntry(e)}
                                     >
                                       ☕ Pause eintragen
                                     </button>
                                     <button
-                                      style={s.deleteBtn}
+                                      className="btn-danger-hover" style={s.deleteBtn}
                                       onClick={() => handleDeleteEntry(e.id)}
                                     >
                                       Löschen
@@ -855,7 +857,7 @@ export default function Admin({ user, onLogout }) {
                               ))
                             )}
                             <button
-                              style={s.manualPunchBtn}
+                              className="btn-ghost-hover" style={s.manualPunchBtn}
                               onClick={() => handleAdminPunch(u.id)}
                             >
                               {isActive ? "⏹ Manuell ausstempeln" : "▶ Manuell einstempeln"}
@@ -879,7 +881,7 @@ export default function Admin({ user, onLogout }) {
         <div style={s.slidePanel}>
           <div style={s.dienstplanWrap}>
             <header style={s.dienstplanHeader}>
-              <button style={s.logoutBtn} onClick={() => setPage("admin")}>‹ Zurück</button>
+              <button className="btn-ghost-hover" style={s.logoutBtn} onClick={() => setPage("admin")}>‹ Zurück</button>
               <span style={{ fontSize: "13px", fontWeight: "700", color: TEXT, letterSpacing: "0.1em" }}>Dienstplan</span>
               <div style={{ width: "72px" }} />
             </header>

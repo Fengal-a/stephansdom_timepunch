@@ -18,3 +18,27 @@ input:focus {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* Button hover effects */
+.btn-ghost-hover {
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-ghost-hover:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  color: #EDEDED !important;
+}
+
+.btn-orange-hover {
+  transition: background 0.15s, opacity 0.15s;
+}
+.btn-orange-hover:hover:not(:disabled) {
+  background: #ff7928 !important;
+}
+
+.btn-danger-hover {
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-danger-hover:hover:not(:disabled) {
+  border-color: rgba(220, 60, 30, 0.6) !important;
+  color: #e05030 !important;
+}

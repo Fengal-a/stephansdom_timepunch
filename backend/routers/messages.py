@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
@@ -6,6 +8,8 @@ from ..database import get_db
 from ..models import Message, User
 from ..schemas import MessageCreate, MessageOut, AdminMessageSend
 from .auth import get_current_user, require_admin
+
+EMPLOYEE_MSG_TTL_DAYS = 14
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
@@ -79,6 +83,13 @@ def my_messages(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=EMPLOYEE_MSG_TTL_DAYS)
+    db.query(Message).filter(
+        Message.recipient_id == current_user.id,
+        Message.sent_at < cutoff,
+    ).delete(synchronize_session=False)
+    db.commit()
+
     msgs = (
         db.query(Message)
         .filter(Message.recipient_id == current_user.id)
@@ -100,6 +111,22 @@ def mark_mine_read(
     if not msg:
         raise HTTPException(status_code=404, detail="Nicht gefunden")
     msg.is_read = True
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/mine/{message_id}")
+def delete_mine(
+    message_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    msg = db.query(Message).filter(
+        Message.id == message_id, Message.recipient_id == current_user.id
+    ).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Nicht gefunden")
+    db.delete(msg)
     db.commit()
     return {"ok": True}
 

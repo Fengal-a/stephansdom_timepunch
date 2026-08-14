@@ -32,7 +32,8 @@ export default function Dashboard({ user, onLogout }) {
   const [loading, setLoading]     = useState(true);
   const [punching, setPunching]     = useState(false);
   const [punchError, setPunchError] = useState("");
-  const [adminMsgs, setAdminMsgs]   = useState([]);
+  const [adminMsgs, setAdminMsgs]     = useState([]);
+  const [confirmDeleteMsg, setConfirmDeleteMsg] = useState(null); // message id to delete
 
   // Note modal
   const [showNote, setShowNote]   = useState(false);
@@ -155,6 +156,17 @@ export default function Dashboard({ user, onLogout }) {
     } catch {}
   }
 
+  async function deleteMineMsg(id) {
+    try {
+      await fetch(`${API}/messages/mine/${id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      setAdminMsgs(prev => prev.filter(m => m.id !== id));
+    } catch {}
+    setConfirmDeleteMsg(null);
+  }
+
   function handlePunchPress() {
     if (status?.clocked_in) {
       setNote("");
@@ -221,14 +233,22 @@ export default function Dashboard({ user, onLogout }) {
               <img src="/cathedral.png" alt="Stephansdom" style={s.logo} />
               <div style={s.headerRight}>
                 <span style={s.userName}>{user.name}</span>
-                <button style={s.logoutBtn} onClick={() => setPage("dienstplan")}>Dienstplan</button>
-                <button style={s.logoutBtn} onClick={openCompose}>✉</button>
-                <button style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
+                <button className="btn-ghost-hover" style={s.logoutBtn} onClick={() => setPage("dienstplan")}>Dienstplan</button>
+                <button className="btn-ghost-hover" style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
               </div>
             </header>
 
             {/* Main content */}
             <main style={s.main}>
+
+              {/* Compose button (employees only) */}
+              {!user.is_admin && (
+                <div style={{ width: "100%", display: "flex", justifyContent: "flex-end" }}>
+                  <button className="btn-ghost-hover" style={s.composeFloatBtn} onClick={openCompose} title="Nachricht an Admin">
+                    ✉ Nachricht
+                  </button>
+                </div>
+              )}
 
               {/* Status pill */}
               <div style={{ ...s.pill, ...(clockedIn ? s.pillActive : s.pillInactive) }}>
@@ -239,7 +259,7 @@ export default function Dashboard({ user, onLogout }) {
               {/* Button area: big button centered, lunch button floats left */}
               <div style={s.btnArea}>
                 <button
-                  style={s.lunchBtn}
+                  className="btn-ghost-hover" style={s.lunchBtn}
                   onClick={() => { setLunchError(""); setShowLunch(true); }}
                   disabled={loading}
                 >
@@ -308,13 +328,22 @@ export default function Dashboard({ user, onLogout }) {
                       style={{ ...s.inboxMsg, ...(m.is_read ? {} : s.inboxMsgUnread) }}
                       onClick={() => !m.is_read && markMsgRead(m.id)}
                     >
-                      <span style={s.inboxDate}>
-                        {new Date(m.sent_at).toLocaleString("de-AT", {
-                          day: "2-digit", month: "2-digit", year: "numeric",
-                          hour: "2-digit", minute: "2-digit",
-                        })}
-                        {!m.is_read && <span style={s.unreadDot} />}
-                      </span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={s.inboxDate}>
+                          {new Date(m.sent_at).toLocaleString("de-AT", {
+                            day: "2-digit", month: "2-digit", year: "numeric",
+                            hour: "2-digit", minute: "2-digit",
+                          })}
+                          {!m.is_read && <span style={s.unreadDot} />}
+                        </span>
+                        <button
+                          className="btn-danger-hover"
+                          style={s.inboxDeleteBtn}
+                          onClick={e => { e.stopPropagation(); setConfirmDeleteMsg(m.id); }}
+                        >
+                          ✕
+                        </button>
+                      </div>
                       <span style={s.inboxBody}>{m.body}</span>
                     </div>
                   ))}
@@ -384,13 +413,13 @@ export default function Dashboard({ user, onLogout }) {
             </div>
             {lunchError && <p style={{ margin: 0, fontSize: "12px", color: ORANGE }}>{lunchError}</p>}
             <button
-              style={{ ...s.confirmBtn, ...(lunchSaving ? s.bigBtnDisabled : {}) }}
+              className="btn-orange-hover" style={{ ...s.confirmBtn, ...(lunchSaving ? s.bigBtnDisabled : {}) }}
               onClick={doSetLunch}
               disabled={lunchSaving}
             >
               {lunchSaving ? <span style={s.spinner} /> : "SPEICHERN"}
             </button>
-            <button style={s.cancelBtn} onClick={() => setShowLunch(false)}>
+            <button className="btn-ghost-hover" style={s.cancelBtn} onClick={() => setShowLunch(false)}>
               Abbrechen
             </button>
           </div>
@@ -412,10 +441,31 @@ export default function Dashboard({ user, onLogout }) {
               onChange={e => setNote(e.target.value)}
               rows={3}
             />
-            <button style={s.confirmBtn} onClick={() => doPunch(note)}>
+            <button className="btn-orange-hover" style={s.confirmBtn} onClick={() => doPunch(note)}>
               AUSSTEMPELN
             </button>
-            <button style={s.cancelBtn} onClick={() => setShowNote(false)}>
+            <button className="btn-ghost-hover" style={s.cancelBtn} onClick={() => setShowNote(false)}>
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm delete message modal */}
+      {confirmDeleteMsg !== null && (
+        <div style={s.overlay} onClick={() => setConfirmDeleteMsg(null)}>
+          <div style={s.sheet} onClick={e => e.stopPropagation()}>
+            <div style={s.sheetHandle} />
+            <p style={s.sheetTitle}>Löschen bestätigen</p>
+            <p style={s.sheetSub}>Diese Nachricht wird unwiderruflich gelöscht.</p>
+            <button
+              className="btn-danger-hover"
+              style={{ ...s.confirmBtn, background: "#c0392b" }}
+              onClick={() => deleteMineMsg(confirmDeleteMsg)}
+            >
+              Löschen
+            </button>
+            <button className="btn-ghost-hover" style={s.cancelBtn} onClick={() => setConfirmDeleteMsg(null)}>
               Abbrechen
             </button>
           </div>
@@ -434,7 +484,7 @@ export default function Dashboard({ user, onLogout }) {
                 <p style={{ margin: 0, fontSize: "14px", color: "#22c55e" }}>
                   Nachricht erfolgreich gesendet.
                 </p>
-                <button style={s.confirmBtn} onClick={() => setShowCompose(false)}>
+                <button className="btn-orange-hover" style={s.confirmBtn} onClick={() => setShowCompose(false)}>
                   Schließen
                 </button>
               </>
@@ -449,13 +499,13 @@ export default function Dashboard({ user, onLogout }) {
                   autoFocus
                 />
                 <button
-                  style={{ ...s.confirmBtn, ...(msgSending ? s.bigBtnDisabled : {}) }}
+                  className="btn-orange-hover" style={{ ...s.confirmBtn, ...(msgSending ? s.bigBtnDisabled : {}) }}
                   onClick={sendMessage}
                   disabled={msgSending || !msgBody.trim()}
                 >
                   {msgSending ? <span style={s.spinner} /> : "SENDEN"}
                 </button>
-                <button style={s.cancelBtn} onClick={() => setShowCompose(false)}>
+                <button className="btn-ghost-hover" style={s.cancelBtn} onClick={() => setShowCompose(false)}>
                   Abbrechen
                 </button>
               </>
@@ -563,6 +613,21 @@ const s = {
     margin: "0 auto",
     width: "100%",
     boxSizing: "border-box",
+  },
+
+  // ── Compose float button ───────────────────────────────────────────────────
+  composeFloatBtn: {
+    background: "none",
+    border: `1px solid ${BORDER}`,
+    borderRadius: "4px",
+    padding: "6px 12px",
+    fontSize: "11px",
+    color: MUTED,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    letterSpacing: "0.06em",
+    touchAction: "manipulation",
+    WebkitTapHighlightColor: "transparent",
   },
 
   // ── Status pill ────────────────────────────────────────────────────────────
@@ -677,6 +742,17 @@ const s = {
     borderColor: "rgba(245,98,15,0.4)",
     background: "rgba(245,98,15,0.05)",
     cursor: "pointer",
+  },
+  inboxDeleteBtn: {
+    background: "none",
+    border: `1px solid rgba(255,80,80,0.2)`,
+    borderRadius: "3px",
+    padding: "2px 7px",
+    fontSize: "10px",
+    color: "#ff5050",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    flexShrink: 0,
   },
   inboxDate: {
     fontSize: "10px", color: MUTED, letterSpacing: "0.08em",
