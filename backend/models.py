@@ -21,6 +21,8 @@ class User(Base):
     password_reset_token   = Column(String, nullable=True)
     password_reset_expires = Column(DateTime(timezone=True), nullable=True)
     created_at             = Column(DateTime(timezone=True), server_default=func.now())
+    failed_login_attempts  = Column(Integer, default=0, nullable=False, server_default="0")
+    locked_until           = Column(DateTime(timezone=True), nullable=True)
 
     time_entries = relationship("TimeEntry", back_populates="user")
 

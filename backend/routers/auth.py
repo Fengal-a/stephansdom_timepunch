@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, HTTPException, status
+from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 import os
 import secrets
-import threading
 import jwt
 import bcrypt
 
@@ -19,34 +18,26 @@ from ..email_utils import send_reset_email
 router = APIRouter(prefix="/auth", tags=["auth"])
 limiter = Limiter(key_func=get_remote_address)
 
-# ── Login lockout (in-memory) ─────────────────────────────────────────────────
-_lockout: dict[str, dict] = {}
-_lockout_lock = threading.Lock()
+# ── Login lockout (DB-backed) ─────────────────────────────────────────────────
 LOCKOUT_AFTER   = 5   # failed attempts before lockout
 LOCKOUT_MINUTES = 15
+MIN_PASSWORD_LEN = 8
 
-def _check_lockout(ip: str) -> None:
-    with _lockout_lock:
-        rec = _lockout.get(ip)
-        if not rec:
-            return
-        until = rec.get("until")
-        if until and datetime.now(timezone.utc) < until:
-            mins = int((until - datetime.now(timezone.utc)).total_seconds() / 60) + 1
-            raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte in {mins} Minute(n) erneut versuchen.")
-        elif until:
-            _lockout.pop(ip, None)  # lockout expired, clear it
+def _check_lockout(user: "User") -> None:
+    if user.locked_until and datetime.now(timezone.utc) < user.locked_until:
+        mins = int((user.locked_until - datetime.now(timezone.utc)).total_seconds() / 60) + 1
+        raise HTTPException(status_code=429, detail=f"Zu viele Fehlversuche. Bitte in {mins} Minute(n) erneut versuchen.")
 
-def _record_failure(ip: str) -> None:
-    with _lockout_lock:
-        rec = _lockout.setdefault(ip, {"count": 0, "until": None})
-        rec["count"] += 1
-        if rec["count"] >= LOCKOUT_AFTER:
-            rec["until"] = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)
+def _record_failure(user: "User", db: Session) -> None:
+    user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+    if user.failed_login_attempts >= LOCKOUT_AFTER:
+        user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)
+    db.commit()
 
-def _clear_lockout(ip: str) -> None:
-    with _lockout_lock:
-        _lockout.pop(ip, None)
+def _clear_lockout(user: "User", db: Session) -> None:
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    db.commit()
 
 # ── Config ────────────────────────────────────────────────────────────────────
 SECRET_KEY = os.environ.get("SECRET_KEY")
@@ -117,15 +108,17 @@ def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    ip = get_remote_address(request)
-    _check_lockout(ip)
-
     user = db.query(User).filter(User.username == form.username).first()
-    if not user or not verify_password(form.password, user.password_hash):
-        _record_failure(ip)
+    if not user:
         raise HTTPException(status_code=401, detail="Ungültiger Benutzername oder Passwort")
 
-    _clear_lockout(ip)
+    _check_lockout(user)
+
+    if not verify_password(form.password, user.password_hash):
+        _record_failure(user, db)
+        raise HTTPException(status_code=401, detail="Ungültiger Benutzername oder Passwort")
+
+    _clear_lockout(user, db)
 
     now = datetime.now(timezone.utc)
     if user.last_login_at is not None:
@@ -186,7 +179,7 @@ def reset_password(payload: dict, db: Session = Depends(get_db)):
     token    = (payload.get("token") or "").strip()
     password = (payload.get("password") or "").strip()
     username = (payload.get("username") or "").strip().lower()
-    if not token or len(password) < 4:
+    if not token or len(password) < MIN_PASSWORD_LEN:
         raise HTTPException(status_code=400, detail="Ungültige Anfrage")
     user = db.query(User).filter(User.password_reset_token == token).first()
     if not user or not user.password_reset_expires:

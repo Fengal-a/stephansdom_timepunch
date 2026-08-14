@@ -114,8 +114,8 @@ def reset_user_password(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     new_password = payload.get("password", "").strip()
-    if len(new_password) < 4:
-        raise HTTPException(status_code=400, detail="Passwort muss mindestens 4 Zeichen haben")
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="Passwort muss mindestens 8 Zeichen haben")
     user.password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
     db.commit()
     return {"ok": True}

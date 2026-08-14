@@ -217,7 +217,7 @@ function ResetPasswordModal({ user: targetUser, onClose }) {
   const [done, setDone]         = useState(false);
 
   async function handleSubmit() {
-    if (password.length < 4) { setError("Mindestens 4 Zeichen erforderlich"); return; }
+    if (password.length < 8) { setError("Mindestens 8 Zeichen erforderlich"); return; }
     setLoading(true); setError("");
     try {
       const res = await fetch(`${API}/admin/users/${targetUser.id}/password`, {
@@ -296,7 +296,7 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
   }
 
   async function handlePasswordSave() {
-    if (password.length < 4) { setPwError("Mindestens 4 Zeichen"); return; }
+    if (password.length < 8) { setPwError("Mindestens 8 Zeichen"); return; }
     setPwLoading(true); setPwError("");
     try {
       const res = await fetch(`${API}/admin/users/${targetUser.id}/password`, {
