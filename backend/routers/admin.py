@@ -154,6 +154,11 @@ def update_user(
         user.email = new_email
     if "is_admin" in payload:
         user.is_admin = bool(payload["is_admin"])
+    if "expected_hours" in payload:
+        try:
+            user.expected_hours = float(payload["expected_hours"])
+        except (TypeError, ValueError):
+            pass
     db.commit()
     db.refresh(user)
     return user

@@ -23,6 +23,7 @@ class UserOut(BaseModel):
     email: Optional[str] = None
     is_admin: bool
     is_active: bool
+    expected_hours: float = 8.0
     created_at: datetime
 
     model_config = {"from_attributes": True}

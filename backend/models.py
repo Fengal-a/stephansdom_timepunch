@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Boolean, Float, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -23,6 +23,7 @@ class User(Base):
     created_at             = Column(DateTime(timezone=True), server_default=func.now())
     failed_login_attempts  = Column(Integer, default=0, nullable=False, server_default="0")
     locked_until           = Column(DateTime(timezone=True), nullable=True)
+    expected_hours         = Column(Float, default=8.0, nullable=False, server_default="8.0")
 
     time_entries = relationship("TimeEntry", back_populates="user")
 

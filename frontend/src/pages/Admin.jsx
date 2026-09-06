@@ -26,27 +26,47 @@ function formatDuration(mins) {
 }
 
 function exportCSV(entries, users) {
-  const userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
+  const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+  const byUser = {};
+  entries.forEach(e => {
+    if (!byUser[e.user_id]) byUser[e.user_id] = [];
+    byUser[e.user_id].push(e);
+  });
+
+  const toTime = iso => iso
+    ? new Date(iso).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" })
+    : "";
+
   const rows = [
-    ["Name", "Einstempeln", "Ausstempeln", "Dauer", "Notiz"],
-    ...entries.map(e => [
-      userMap[e.user_id] ?? e.user_id,
-      e.punch_in ? new Date(e.punch_in).toLocaleString("de-AT") : "",
-      e.punch_out ? new Date(e.punch_out).toLocaleString("de-AT") : "läuft",
-      e.duration_minutes != null ? formatDuration(e.duration_minutes) : "",
-      e.note ?? "",
-    ])
+    ["Name", "Einstempeln", "Ausstempeln", "SOLL-Arbeitszeit", "IST-Arbeitszeit", "Notizen"],
+    ...Object.entries(byUser).map(([userId, userEntries]) => {
+      const user  = userMap[userId];
+      const name  = user?.name ?? userId;
+      const soll  = user?.expected_hours ?? 8;
+
+      const sorted  = [...userEntries].sort((a, b) => new Date(a.punch_in) - new Date(b.punch_in));
+      const firstIn = sorted[0]?.punch_in;
+      const lastOut = [...sorted].reverse().find(e => e.punch_out)?.punch_out;
+
+      const totalMins = userEntries.reduce((sum, e) => sum + (e.duration_minutes ?? 0), 0);
+      const istH  = (totalMins / 60).toFixed(2).replace(".", ",");
+      const sollH = Number(soll).toFixed(2).replace(".", ",");
+      const notes = userEntries.filter(e => e.note).map(e => e.note).join("; ");
+
+      return [name, toTime(firstIn), lastOut ? toTime(lastOut) : "läuft", `${sollH} h`, `${istH} h`, notes];
+    }),
   ];
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `timepunch_${new Date().toISOString().slice(0,10)}.csv`;
+
+  const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `timepunch_taeglich_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
-
 // ── Add User Modal ────────────────────────────────────────────────────────────
 
 function AddUserModal({ onClose, onCreated }) {
@@ -272,7 +292,7 @@ function ResetPasswordModal({ user: targetUser, onClose }) {
 // ── Edit User Modal ───────────────────────────────────────────────────────────
 
 function EditUserModal({ user: targetUser, onClose, onSaved }) {
-  const [form,     setForm]     = useState({ first_name: targetUser.first_name ?? "", last_name: targetUser.last_name ?? "", username: targetUser.username, email: targetUser.email ?? "", is_admin: targetUser.is_admin });
+  const [form,     setForm]     = useState({ first_name: targetUser.first_name ?? "", last_name: targetUser.last_name ?? "", username: targetUser.username, email: targetUser.email ?? "", is_admin: targetUser.is_admin, expected_hours: targetUser.expected_hours ?? 8 });
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
   const [pwError,  setPwError]  = useState("");
@@ -338,6 +358,14 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
             />
           </div>
         ))}
+        <div style={s.field}>
+          <label style={s.label}>SOLL-Arbeitszeit (Stunden/Tag)</label>
+          <input
+            style={s.input} type="number" min="0" max="24" step="0.5"
+            value={form.expected_hours}
+            onChange={e => setForm(p => ({ ...p, expected_hours: e.target.value }))}
+          />
+        </div>
         <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
           <label style={s.label}>Passwort zurücksetzen</label>
           <div style={{ display: "flex", gap: "8px" }}>
@@ -663,6 +691,7 @@ export default function Admin({ user, onLogout }) {
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <span style={s.badge}>{users.filter(u => !u.is_admin).length}</span>
                       <button className="btn-ghost-hover" style={s.ghostBtn} onClick={() => setShowCompose(true)}>✉ Nachricht senden</button>
+                      <button className="btn-orange-hover" style={s.orangeBtn} onClick={() => setShowAddUser(true)}>+ Mitarbeiter</button>
                     </div>
                   </div>
                   {users.filter(u => !u.is_admin).map(u => {
@@ -770,17 +799,11 @@ export default function Admin({ user, onLogout }) {
               <div style={s.toolbar}>
                 <p style={s.sectionTitle}>HEUTE — {formatDate(new Date().toISOString())}</p>
                 <div style={s.toolbarBtns}>
-                  <button className="btn-ghost-hover" style={s.ghostBtn} disabled title="Demnächst verfügbar">
-                    📅 Vergangene Tage
-                  </button>
                   <button className="btn-ghost-hover" style={s.ghostBtn} onClick={() => exportCSV(entries, users)}>
-                    ↓ CSV Export
+                    ↓ Täglicher Export
                   </button>
                   <button className="btn-ghost-hover" style={s.ghostBtn} onClick={() => setShowMonthlyExport(true)}>
                     ↓ Monatsexport
-                  </button>
-                  <button className="btn-orange-hover" style={s.orangeBtn} onClick={() => setShowAddUser(true)}>
-                    + Mitarbeiter
                   </button>
                 </div>
               </div>
