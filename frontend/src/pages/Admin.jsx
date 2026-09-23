@@ -34,27 +34,25 @@ function exportCSV(entries, users) {
     byUser[e.user_id].push(e);
   });
 
-  const toTime = iso => iso
-    ? new Date(iso).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" })
-    : "";
+  const toTime = iso => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
 
   const rows = [
-    ["Name", "Einstempeln", "Ausstempeln", "SOLL-Arbeitszeit", "IST-Arbeitszeit", "Notizen"],
+    ["Name", "Einstempeln", "Ausstempeln", "SOLL-Arbeitszeit (h)", "IST-Arbeitszeit (h)", "Notizen"],
     ...Object.entries(byUser).map(([userId, userEntries]) => {
       const user  = userMap[userId];
       const name  = user?.name ?? userId;
-      const soll  = user?.expected_hours ?? 8;
 
       const sorted  = [...userEntries].sort((a, b) => new Date(a.punch_in) - new Date(b.punch_in));
       const firstIn = sorted[0]?.punch_in;
       const lastOut = [...sorted].reverse().find(e => e.punch_out)?.punch_out;
 
-      const totalMins = userEntries.reduce((sum, e) => sum + (e.duration_minutes ?? 0), 0);
-      const istH  = (totalMins / 60).toFixed(2).replace(".", ",");
-      const sollH = Number(soll).toFixed(2).replace(".", ",");
       const notes = userEntries.filter(e => e.note).map(e => e.note).join("; ");
 
-      return [name, toTime(firstIn), lastOut ? toTime(lastOut) : "läuft", `${sollH} h`, `${istH} h`, notes];
+      return [name, toTime(firstIn), lastOut ? toTime(lastOut) : "läuft", "", "", notes];
     }),
   ];
 
