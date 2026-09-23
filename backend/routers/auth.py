@@ -121,11 +121,6 @@ def login(
     _clear_lockout(user, db)
 
     now = datetime.now(timezone.utc)
-    if user.last_login_at is not None:
-        session_expires = user.last_login_at + timedelta(hours=TOKEN_EXPIRE_HOURS)
-        if session_expires > now:
-            raise HTTPException(status_code=409, detail="Der Account wird bereits verwendet.")
-
     user.token_version += 1
     user.last_login_at = now
     db.commit()

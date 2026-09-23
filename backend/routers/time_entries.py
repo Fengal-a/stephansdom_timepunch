@@ -14,16 +14,19 @@ from .auth import get_current_user
 router = APIRouter(prefix="/users", tags=["users"])
 
 OFFICE_NETWORKS = os.environ.get("OFFICE_NETWORKS", "")
+BUERO_NETWORKS  = os.environ.get("BUERO_NETWORKS", "")
 VIENNA_TZ       = ZoneInfo("Europe/Vienna")
 CHECKIN_CUTOFF  = (9, 5)  # 09:05 Vienna time
 
+_ALL_NETWORKS = ",".join(filter(None, [OFFICE_NETWORKS, BUERO_NETWORKS]))
+
 
 def _is_office_ip(client_ip: str) -> bool:
-    if not OFFICE_NETWORKS:
+    if not _ALL_NETWORKS:
         return True  # restriction disabled (local dev)
     try:
         addr = ipaddress.ip_address(client_ip)
-        for cidr in OFFICE_NETWORKS.split(","):
+        for cidr in _ALL_NETWORKS.split(","):
             if addr in ipaddress.ip_network(cidr.strip(), strict=False):
                 return True
     except ValueError:
