@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 import ipaddress
@@ -32,6 +32,45 @@ def _is_office_ip(client_ip: str) -> bool:
     except ValueError:
         pass
     return False
+
+
+MAX_SHIFT_HOURS    = 12
+AUTO_PUNCHOUT_HOUR = 21  # 9 PM Vienna time
+
+
+def _to_utc(dt: datetime) -> datetime:
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
+
+def _auto_close_time(punch_in: datetime) -> datetime:
+    """Returns the UTC time at which an open entry should be force-closed.
+    Rule: earlier of (21:00 Vienna on punch_in day) or (punch_in + 10 h)."""
+    punch_in_utc    = _to_utc(punch_in)
+    punch_in_vienna = punch_in_utc.astimezone(VIENNA_TZ)
+
+    cutoff_9pm = punch_in_vienna.replace(
+        hour=AUTO_PUNCHOUT_HOUR, minute=0, second=0, microsecond=0
+    )
+    if punch_in_vienna.hour >= AUTO_PUNCHOUT_HOUR:
+        cutoff_9pm += timedelta(days=1)
+
+    return min(cutoff_9pm.astimezone(timezone.utc), punch_in_utc + timedelta(hours=MAX_SHIFT_HOURS))
+
+
+def _close_stale_entries(db: Session) -> None:
+    """Auto-punch-out any open entries that have passed their force-close time."""
+    now          = datetime.now(timezone.utc)
+    open_entries = db.query(TimeEntry).filter(TimeEntry.punch_out.is_(None)).all()
+    changed      = False
+    for entry in open_entries:
+        close_at = _auto_close_time(entry.punch_in)
+        if now >= close_at:
+            punch_in_utc          = _to_utc(entry.punch_in)
+            entry.punch_out       = close_at
+            entry.duration_minutes = int((close_at - punch_in_utc).total_seconds() / 60)
+            changed = True
+    if changed:
+        db.commit()
 
 
 def _past_checkin_cutoff() -> bool:
@@ -69,6 +108,8 @@ def punch(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _close_stale_entries(db)
+
     open_entry = (
         db.query(TimeEntry)
         .filter(TimeEntry.user_id == current_user.id, TimeEntry.punch_out.is_(None))
@@ -98,9 +139,10 @@ def punch(
         db.refresh(entry)
         return PunchResponse(action="punched_in", user_id=current_user.id, entry=entry)
     else:
-        punch_in_utc = open_entry.punch_in.astimezone(timezone.utc) if open_entry.punch_in.tzinfo else open_entry.punch_in.replace(tzinfo=timezone.utc)
-        duration = int((now - punch_in_utc).total_seconds() / 60)
-        open_entry.punch_out = now
+        punch_in_utc           = _to_utc(open_entry.punch_in)
+        effective_out          = min(now, _auto_close_time(open_entry.punch_in))
+        duration               = int((effective_out - punch_in_utc).total_seconds() / 60)
+        open_entry.punch_out   = effective_out
         open_entry.duration_minutes = duration
         open_entry.note = payload.note  # may be None — that's fine
         db.commit()
