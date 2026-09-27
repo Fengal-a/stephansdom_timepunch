@@ -411,7 +411,7 @@ export default function Dashboard({ user, onLogout }) {
                 />
               </div>
             </div>
-            {lunchError && <p style={{ margin: 0, fontSize: "12px", color: ORANGE }}>{lunchError}</p>}
+            {lunchError && <p style={{ margin: 0, fontSize: "12px", color: "#E05030" }}>{lunchError}</p>}
             <button
               className="btn-orange-hover" style={{ ...s.confirmBtn, ...(lunchSaving ? s.bigBtnDisabled : {}) }}
               onClick={doSetLunch}
@@ -522,7 +522,7 @@ export default function Dashboard({ user, onLogout }) {
 const BLACK   = "#0D0D0D";
 const SURFACE = "#161616";
 const BORDER  = "#2A2A2A";
-const ORANGE  = "#F5620F";
+const ORANGE  = "#2D7A4F";
 const TEXT    = "#EDEDED";
 const MUTED   = "#6B6B6B";
 const GREEN   = "#22c55e";
@@ -693,7 +693,7 @@ const s = {
   },
   bigBtnOut: {
     background: "linear-gradient(145deg, #7a1f06, #4a1204)",
-    boxShadow: "0 0 0 10px rgba(245,98,15,0.06), 0 0 50px rgba(245,98,15,0.15)",
+    boxShadow: "0 0 0 10px rgba(180,40,40,0.08), 0 0 50px rgba(180,40,40,0.18)",
   },
   bigBtnDisabled: { opacity: 0.5, cursor: "not-allowed" },
   bigBtnIcon:     { fontSize: "28px", color: "#fff", lineHeight: 1 },
@@ -706,10 +706,10 @@ const s = {
   },
 
   punchErr: {
-    margin: 0, fontSize: "12px", color: ORANGE,
+    margin: 0, fontSize: "12px", color: "#E05030",
     textAlign: "center", maxWidth: "280px",
     padding: "8px 14px", borderRadius: "4px",
-    background: "rgba(245,98,15,0.08)", border: "1px solid rgba(245,98,15,0.2)",
+    background: "rgba(224,80,48,0.08)", border: "1px solid rgba(224,80,48,0.2)",
   },
 
   // ── Stats row ──────────────────────────────────────────────────────────────
@@ -739,8 +739,8 @@ const s = {
     cursor: "default",
   },
   inboxMsgUnread: {
-    borderColor: "rgba(245,98,15,0.4)",
-    background: "rgba(245,98,15,0.05)",
+    borderColor: "rgba(45,122,79,0.5)",
+    background: "rgba(45,122,79,0.06)",
     cursor: "pointer",
   },
   inboxDeleteBtn: {

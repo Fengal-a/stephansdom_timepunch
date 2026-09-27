@@ -381,7 +381,7 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
               {pwLoading ? "..." : pwSaved ? "✓" : "Setzen"}
             </button>
           </div>
-          {pwError && <p style={{ margin: 0, fontSize: "11px", color: ORANGE }}>{pwError}</p>}
+          {pwError && <p style={{ margin: 0, fontSize: "11px", color: "#E05030" }}>{pwError}</p>}
         </div>
 
         <div style={s.modalBtns}>
@@ -961,7 +961,7 @@ export default function Admin({ user, onLogout }) {
 const BLACK   = "#0D0D0D";
 const SURFACE = "#161616";
 const BORDER  = "#2A2A2A";
-const ORANGE  = "#F5620F";
+const ORANGE  = "#2D7A4F";
 const TEXT    = "#EDEDED";
 const MUTED   = "#6B6B6B";
 const GREEN   = "#22c55e";
@@ -1065,7 +1065,7 @@ const s = {
     padding: "14px 16px", borderBottom: `1px solid ${BORDER}`,
     display: "flex", flexDirection: "column", gap: "6px",
   },
-  msgRowUnread: { background: "rgba(245,98,15,0.04)", borderLeft: `3px solid ${ORANGE}` },
+  msgRowUnread: { background: "rgba(45,122,79,0.05)", borderLeft: `3px solid ${ORANGE}` },
   msgMeta:   { display: "flex", justifyContent: "space-between", alignItems: "center" },
   msgSender: { fontSize: "13px", fontWeight: "600", color: TEXT },
   msgTime:   { fontSize: "11px", color: MUTED },
@@ -1087,9 +1087,9 @@ const s = {
   activeName:  { fontSize: "14px", color: TEXT, fontWeight: "600" },
   activeSince: { fontSize: "11px", color: MUTED },
   punchOutBtn: {
-    background: "rgba(245,98,15,0.15)", border: `1px solid rgba(245,98,15,0.3)`,
+    background: "rgba(180,40,40,0.15)", border: "1px solid rgba(180,40,40,0.35)",
     borderRadius: "3px", padding: "6px 12px", fontSize: "11px",
-    color: ORANGE, cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.06em",
+    color: "#e06060", cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.06em",
   },
 
   toolbar: {
@@ -1197,7 +1197,7 @@ const s = {
   },
   errorBox: {
     margin: 0, padding: "10px 12px",
-    background: "rgba(245,98,15,0.1)", border: `1px solid rgba(245,98,15,0.3)`,
-    borderRadius: "3px", fontSize: "12px", color: ORANGE,
+    background: "rgba(224,80,48,0.1)", border: "1px solid rgba(224,80,48,0.3)",
+    borderRadius: "3px", fontSize: "12px", color: "#E05030",
   },
 };

@@ -108,7 +108,7 @@ export default function ResetPassword({ onDone }) {
   );
 }
 
-const ORANGE  = "#F5620F";
+const ORANGE  = "#2D7A4F";
 const BLACK   = "#0D0D0D";
 const SURFACE = "#161616";
 const BORDER  = "#2A2A2A";
@@ -151,8 +151,8 @@ const s = {
   },
   error: {
     margin: 0, padding: "10px 14px",
-    background: "rgba(245,98,15,0.1)", border: `1px solid rgba(245,98,15,0.3)`,
-    borderRadius: "3px", fontSize: "13px", color: ORANGE,
+    background: "rgba(224,80,48,0.1)", border: `1px solid rgba(224,80,48,0.3)`,
+    borderRadius: "3px", fontSize: "13px", color: "#E05030",
   },
   btn: {
     background: ORANGE, border: "none", borderRadius: "3px",
@@ -162,7 +162,7 @@ const s = {
     cursor: "pointer", display: "flex", alignItems: "center",
     justifyContent: "center", minHeight: "52px",
   },
-  btnDisabled: { background: "#7a3107", cursor: "not-allowed" },
+  btnDisabled: { background: "#1C4A31", cursor: "not-allowed" },
   spinner: {
     width: "18px", height: "18px",
     border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff",

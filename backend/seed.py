@@ -20,7 +20,7 @@ db.query(User).delete()
 db.commit()
 
 # Create admin
-pw = bcrypt.hashpw("xRaPj5ye".encode(), bcrypt.gensalt()).decode()
+pw = bcrypt.hashpw("ap1kb4!".encode(), bcrypt.gensalt()).decode()
 db.add(User(name="Administrator", username="admin", password_hash=pw, is_admin=True))
 db.commit()
 

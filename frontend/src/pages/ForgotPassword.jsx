@@ -73,7 +73,7 @@ export default function ForgotPassword({ onBack }) {
   );
 }
 
-const ORANGE  = "#F5620F";
+const ORANGE  = "#2D7A4F";
 const BLACK   = "#0D0D0D";
 const SURFACE = "#161616";
 const BORDER  = "#2A2A2A";
@@ -122,7 +122,7 @@ const s = {
     cursor: "pointer", display: "flex", alignItems: "center",
     justifyContent: "center", minHeight: "52px",
   },
-  btnDisabled: { background: "#7a3107", cursor: "not-allowed" },
+  btnDisabled: { background: "#1C4A31", cursor: "not-allowed" },
   spinner: {
     width: "18px", height: "18px",
     border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff",

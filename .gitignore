@@ -6,13 +6,27 @@ __pycache__/
 *.pyc
 *.pyo
 *.db
+.venv/
+venv/
+*.egg-info/
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
+node_modules/
 
 # Uploads (user content)
 uploads/
+
+# Backups
+backups/
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Seed script — contains a hardcoded admin password
+backend/seed.py
 
 # Random files
 TODO.txt

@@ -387,7 +387,7 @@ export default function ShiftCalendar({ readOnly = false, highlightName = "" }) 
 const BLACK   = "#0D0D0D";
 const SURFACE = "#161616";
 const BORDER  = "#2A2A2A";
-const ORANGE  = "#F5620F";
+const ORANGE  = "#2D7A4F";
 const TEXT    = "#EDEDED";
 const MUTED   = "#6B6B6B";
 
@@ -441,14 +441,14 @@ const s = {
   },
   editableCell: { cursor: "pointer" },
   weekendCell:  { background: "#0a0a0a" },
-  highlightCell: { background: "rgba(245,98,15,0.08)" },
+  highlightCell: { background: "rgba(45,122,79,0.08)" },
 
   cellValue:        { color: TEXT, fontSize: "11px" },
   cellEmpty:        { color: BORDER, fontSize: "13px" },
   cellHighlightVal: { color: ORANGE, fontSize: "11px", fontWeight: "700" },
 
   cellInput: {
-    background: "rgba(245,98,15,0.08)", border: "none",
+    background: "rgba(45,122,79,0.08)", border: "none",
     borderBottom: `1px solid ${ORANGE}`, color: TEXT, fontSize: "11px",
     textAlign: "center", padding: "6px 2px", outline: "none",
     fontFamily: "'DM Mono', 'Courier New', monospace", boxSizing: "border-box",
@@ -469,7 +469,7 @@ const s = {
     padding: "7px 10px", fontSize: "11px", color: TEXT, cursor: "pointer",
     textAlign: "left", borderBottom: `1px solid ${BORDER}`,
   },
-  dropdownActive: { background: "rgba(245,98,15,0.15)", color: ORANGE },
+  dropdownActive: { background: "rgba(45,122,79,0.15)", color: ORANGE },
 
   saveBar: {
     display: "flex", alignItems: "center", gap: "14px",

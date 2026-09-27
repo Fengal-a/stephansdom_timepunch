@@ -113,7 +113,7 @@ export default function Login({ onLogin, onForgot }) {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const ORANGE  = "#F5620F";
+const ORANGE  = "#2D7A4F";
 const BLACK   = "#0D0D0D";
 const SURFACE = "#161616";
 const BORDER  = "#2A2A2A";
@@ -211,11 +211,11 @@ const styles = {
   error: {
     margin: 0,
     padding: "10px 14px",
-    background: "rgba(245,98,15,0.1)",
-    border: `1px solid rgba(245,98,15,0.3)`,
+    background: "rgba(224,80,48,0.1)",
+    border: `1px solid rgba(224,80,48,0.3)`,
     borderRadius: "3px",
     fontSize: "13px",
-    color: ORANGE,
+    color: "#E05030",
   },
   btn: {
     marginTop: "8px",
@@ -236,7 +236,7 @@ const styles = {
     transition: "background 0.15s, transform 0.1s",
   },
   btnDisabled: {
-    background: "#7a3107",
+    background: "#1C4A31",
     cursor: "not-allowed",
   },
   spinner: {

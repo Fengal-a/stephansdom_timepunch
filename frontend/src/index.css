@@ -12,7 +12,7 @@ html, body, #root {
 }
 
 input:focus {
-  border-color: #F5620F !important;
+  border-color: #2D7A4F !important;
 }
 
 @keyframes spin {
@@ -32,7 +32,7 @@ input:focus {
   transition: background 0.15s, opacity 0.15s;
 }
 .btn-orange-hover:hover:not(:disabled) {
-  background: #ff7928 !important;
+  background: #38966A !important;
 }
 
 .btn-danger-hover {
