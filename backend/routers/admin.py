@@ -103,6 +103,32 @@ def create_user(
     return user
 
 
+@router.post("/users/{user_id}/resend-invite")
+def resend_invite(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Mitarbeiter nicht gefunden")
+    if not user.email:
+        raise HTTPException(status_code=400, detail="Keine E-Mail-Adresse hinterlegt")
+
+    token = secrets.token_urlsafe(32)
+    user.password_reset_token   = token
+    user.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=48)
+    db.commit()
+
+    # Unlike account creation, the admin explicitly asked for this — report failures.
+    try:
+        send_invite_email(user.email, user.name, token)
+    except Exception:
+        raise HTTPException(status_code=502, detail="E-Mail konnte nicht gesendet werden")
+
+    return {"ok": True, "email": user.email}
+
+
 @router.put("/users/{user_id}/password")
 def reset_user_password(
     user_id: int,

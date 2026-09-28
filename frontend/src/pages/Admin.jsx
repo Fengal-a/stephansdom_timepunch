@@ -545,6 +545,7 @@ export default function Admin({ user, onLogout }) {
   const [resetUser,        setResetUser]        = useState(null);
   const [lunchEntry,       setLunchEntry]       = useState(null);
   const [editUser,         setEditUser]         = useState(null);
+  const [invitingId,       setInvitingId]       = useState(null);
   const [loading,       setLoading]       = useState(true);
   const [page,          setPage]          = useState("admin"); // "admin" | "dienstplan"
   const [subPage,       setSubPage]       = useState("overview"); // "overview" | "mitarbeiter"
@@ -602,6 +603,21 @@ export default function Admin({ user, onLogout }) {
       method: "POST", headers: authHeaders(),
     });
     fetchAll();
+  }
+
+  async function handleResendInvite(user) {
+    setInvitingId(user.id);
+    try {
+      const res  = await fetch(`${API}/admin/users/${user.id}/resend-invite`, {
+        method: "POST", headers: authHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
+      alert(res.ok
+        ? `Einladung an ${data.email} gesendet. Der Link ist 48 Stunden gültig.`
+        : data.detail || "Einladung konnte nicht gesendet werden");
+    } finally {
+      setInvitingId(null);
+    }
   }
 
   async function handleDeleteEntry(entryId) {
@@ -707,6 +723,15 @@ export default function Admin({ user, onLogout }) {
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                           <span style={{ fontSize: "12px", color: statusColor }}>{statusLabel}</span>
+                          {u.email && (
+                            <button
+                              className="btn-ghost-hover" style={s.editBtn}
+                              disabled={invitingId === u.id}
+                              onClick={() => handleResendInvite(u)}
+                            >
+                              {invitingId === u.id ? "Senden..." : "✉ Einladung erneut senden"}
+                            </button>
+                          )}
                           <button className="btn-ghost-hover" style={s.editBtn} onClick={() => setEditUser(u)}>
                             ↺ Stammdaten ändern
                           </button>
