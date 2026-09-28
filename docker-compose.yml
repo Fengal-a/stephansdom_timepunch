@@ -25,6 +25,9 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       OFFICE_NETWORKS: ${OFFICE_NETWORKS}
       BUERO_NETWORKS: ${BUERO_NETWORKS}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      APP_URL: ${APP_URL}
     volumes:
       - uploads_data:/app/uploads
     depends_on:
