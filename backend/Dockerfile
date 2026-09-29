@@ -3,10 +3,8 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Install dependencies
-RUN pip install --no-cache-dir \
-    fastapi sqlalchemy uvicorn \
-    python-multipart email-validator pyjwt slowapi \
-    psycopg2-binary bcrypt
+COPY backend/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source
 COPY backend/ ./backend/

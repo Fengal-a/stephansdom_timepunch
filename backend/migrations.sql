@@ -9,5 +9,12 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires TIMESTAMP WITH
 ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts  INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until           TIMESTAMP WITH TIME ZONE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS expected_hours         DOUBLE PRECISION NOT NULL DEFAULT 8.0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_sent_at TIMESTAMP WITH TIME ZONE;
 
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS recipient_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
+-- is_active is now enforced at login. Any NULL would lock that user out, so
+-- backfill before deploying the code that checks it.
+UPDATE users SET is_active = true WHERE is_active IS NULL;
+ALTER TABLE users ALTER COLUMN is_active SET DEFAULT true;
+ALTER TABLE users ALTER COLUMN is_active SET NOT NULL;

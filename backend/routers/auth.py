@@ -22,6 +22,7 @@ limiter = Limiter(key_func=get_remote_address)
 LOCKOUT_AFTER   = 5   # failed attempts before lockout
 LOCKOUT_MINUTES = 15
 MIN_PASSWORD_LEN = 8
+RESET_COOLDOWN_MINUTES = 5
 
 def _check_lockout(user: "User") -> None:
     if user.locked_until and datetime.now(timezone.utc) < user.locked_until:
@@ -90,6 +91,8 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Benutzer nicht gefunden")
     if payload.get("tv") != user.token_version:
         raise HTTPException(status_code=401, detail="Sitzung abgelaufen")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Dieses Konto ist deaktiviert.")
     return user
 
 
@@ -117,6 +120,9 @@ def login(
     if not verify_password(form.password, user.password_hash):
         _record_failure(user, db)
         raise HTTPException(status_code=401, detail="Ungültiger Benutzername oder Passwort")
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Dieses Konto ist deaktiviert.")
 
     _clear_lockout(user, db)
 
@@ -156,15 +162,24 @@ def me(current_user: User = Depends(get_current_user)):
 def forgot_password(payload: dict, db: Session = Depends(get_db)):
     email = (payload.get("email") or "").strip().lower()
     user = db.query(User).filter(User.email == email).first()
-    if user:
-        token = secrets.token_urlsafe(32)
-        user.password_reset_token   = token
-        user.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
-        db.commit()
-        try:
-            send_reset_email(user.email, user.name, token)
-        except Exception:
-            pass
+    if user and user.is_active:
+        now = datetime.now(timezone.utc)
+        # Per-account, not per-IP: the whole office shares one public address,
+        # so an IP-based limit would lock everyone out at once.
+        recent = (
+            user.password_reset_sent_at
+            and now - user.password_reset_sent_at < timedelta(minutes=RESET_COOLDOWN_MINUTES)
+        )
+        if not recent:
+            token = secrets.token_urlsafe(32)
+            user.password_reset_token   = token
+            user.password_reset_expires = now + timedelta(hours=1)
+            user.password_reset_sent_at = now
+            db.commit()
+            try:
+                send_reset_email(user.email, user.name, token)
+            except Exception:
+                pass
     # Always return ok — don't reveal whether the email exists
     return {"ok": True}
 

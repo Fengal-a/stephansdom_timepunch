@@ -8,7 +8,7 @@ import os
 
 from ..database import get_db
 from ..models import User, TimeEntry
-from ..schemas import PunchResponse, PunchRequest, TimeEntryOut, UserOut, UserCreate, LunchRequest
+from ..schemas import PunchResponse, PunchRequest, TimeEntryOut, LunchRequest
 from .auth import get_current_user
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -77,26 +77,6 @@ def _past_checkin_cutoff() -> bool:
     now = datetime.now(VIENNA_TZ)
     cutoff_h, cutoff_m = CHECKIN_CUTOFF
     return (now.hour, now.minute) > (cutoff_h, cutoff_m)
-
-
-# ── User management ───────────────────────────────────────────────────────────
-
-@router.get("/", response_model=List[UserOut])
-def list_users(db: Session = Depends(get_db)):
-    return db.query(User).all()
-
-
-@router.get("/active", response_model=List[UserOut])
-def list_active_users(db: Session = Depends(get_db)):
-    """Returns all users who are currently clocked in."""
-    active_user_ids = (
-        db.query(TimeEntry.user_id)
-        .filter(TimeEntry.punch_out.is_(None))
-        .distinct()
-        .all()
-    )
-    ids = [row[0] for row in active_user_ids]
-    return db.query(User).filter(User.id.in_(ids)).all()
 
 
 # ── Punch in / out ────────────────────────────────────────────────────────────
