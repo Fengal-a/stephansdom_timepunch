@@ -105,7 +105,9 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/login")
-@limiter.limit("5/minute")  # limit login attempts to prevent brute-force
+# The whole office shares one public IP, so this bucket covers everyone at once.
+# It only stops flooding — per-account brute-force is handled by _check_lockout.
+@limiter.limit("60/minute")
 def login(
     request: Request,
     form: OAuth2PasswordRequestForm = Depends(),
