@@ -546,6 +546,11 @@ export default function Admin({ user, onLogout }) {
   const [lunchEntry,       setLunchEntry]       = useState(null);
   const [editUser,         setEditUser]         = useState(null);
   const [invitingId,       setInvitingId]       = useState(null);
+  const [userSearch,       setUserSearch]       = useState("");
+  const [inboxOpen,        setInboxOpen]        = useState(true);
+  const [msgFilter,        setMsgFilter]        = useState("all");
+  const [msgSearch,        setMsgSearch]        = useState("");
+  const [activeOpen,       setActiveOpen]       = useState(true);
   const [loading,       setLoading]       = useState(true);
   const [page,          setPage]          = useState("admin"); // "admin" | "dienstplan"
   const [subPage,       setSubPage]       = useState("overview"); // "overview" | "mitarbeiter"
@@ -578,9 +583,11 @@ export default function Admin({ user, onLogout }) {
     setMessages(prev => prev.map(m => m.id === id ? { ...m, is_read: true } : m));
   }
 
-  async function handleDeleteMessage(id) {
-    await fetch(`${API}/messages/${id}`, { method: "DELETE", headers: authHeaders() });
-    setMessages(prev => prev.filter(m => m.id !== id));
+  async function handleDeleteMessage(msg) {
+    const preview = msg.body.length > 60 ? `${msg.body.slice(0, 60)}...` : msg.body;
+    if (!confirm(`Nachricht von ${msg.sender_name} endgültig löschen?\n\n"${preview}"`)) return;
+    await fetch(`${API}/messages/${msg.id}`, { method: "DELETE", headers: authHeaders() });
+    setMessages(prev => prev.filter(m => m.id !== msg.id));
   }
 
   async function handleAdminSend(recipientIds, body) {
@@ -657,6 +664,19 @@ export default function Admin({ user, onLogout }) {
   const activeUserIds  = new Set(activeEntries.map(e => e.user_id));
   const slideOffset    = page === "dienstplan" ? "-50%" : "0%";
 
+  // Matches Vor- or Nachname independently: "F" finds both Franz Aigner and Elias Fritz.
+  const searchTerm   = userSearch.trim().toLowerCase();
+  const filteredUsers = users
+    .filter(u => !u.is_admin)
+    .filter(u => !searchTerm || (u.name ?? "").toLowerCase().split(/\s+/).some(part => part.startsWith(searchTerm)));
+
+  const msgTerm = msgSearch.trim().toLowerCase();
+  const visibleMessages = messages
+    .filter(m => msgFilter === "all" || !m.is_read)
+    .filter(m => !msgTerm
+      || (m.sender_name ?? "").toLowerCase().includes(msgTerm)
+      || (m.body ?? "").toLowerCase().includes(msgTerm));
+
   return (
     <div
       style={s.slideViewport}
@@ -703,12 +723,27 @@ export default function Admin({ user, onLogout }) {
                   <div style={s.sectionHeader}>
                     <p style={s.sectionTitle}>MITARBEITER</p>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span style={s.badge}>{users.filter(u => !u.is_admin).length}</span>
+                      <span style={s.badge}>{filteredUsers.length}</span>
                       <button className="btn-ghost-hover" style={s.ghostBtn} onClick={() => setShowCompose(true)}>✉ Nachricht senden</button>
                       <button className="btn-orange-hover" style={s.orangeBtn} onClick={() => setShowAddUser(true)}>+ Mitarbeiter</button>
                     </div>
+                    <div style={s.searchWrap}>
+                      <span style={s.searchLabel}>Suchen</span>
+                      <input
+                        style={s.searchInput}
+                        type="text"
+                        value={userSearch}
+                        onChange={e => setUserSearch(e.target.value)}
+                        placeholder="Name"
+                      />
+                    </div>
                   </div>
-                  {users.filter(u => !u.is_admin).map(u => {
+                  {filteredUsers.length === 0 && (
+                    <p style={s.empty}>
+                      {userSearch.trim() ? `Kein Treffer für "${userSearch.trim()}"` : "Keine Mitarbeiter vorhanden"}
+                    </p>
+                  )}
+                  {filteredUsers.map(u => {
                     const isClocked = activeUserIds.has(u.id);
                     const statusLabel = isClocked ? "Eingestempelt" : "Ausgestempelt";
                     const statusColor = isClocked ? GREEN : MUTED;
@@ -746,16 +781,44 @@ export default function Admin({ user, onLogout }) {
 
               {/* ── Inbox ── */}
               <section style={s.section}>
-                <div style={s.sectionHeader}>
+                <div style={{ ...s.sectionHeader, cursor: "pointer" }} onClick={() => setInboxOpen(o => !o)}>
                   <p style={s.sectionTitle}>POSTEINGANG</p>
                   {messages.filter(m => !m.is_read).length > 0 && (
                     <span style={s.badge}>{messages.filter(m => !m.is_read).length} neu</span>
                   )}
+                  <span style={s.collapseChevron}>{inboxOpen ? "▲" : "▼"}</span>
                 </div>
-                {messages.length === 0 ? (
-                  <p style={s.empty}>Keine Nachrichten</p>
+                {inboxOpen && (
+                  <div style={s.inboxTools}>
+                    <div style={s.msgFilterGroup}>
+                      {["all", "unread"].map(f => (
+                        <button
+                          key={f}
+                          className="btn-ghost-hover"
+                          style={{ ...s.msgFilterBtn, ...(msgFilter === f ? s.msgFilterBtnActive : {}) }}
+                          onClick={() => setMsgFilter(f)}
+                        >
+                          {f === "all" ? "Alle" : "Ungelesen"}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      style={{ ...s.searchInput, marginLeft: "auto" }}
+                      type="text"
+                      value={msgSearch}
+                      onChange={e => setMsgSearch(e.target.value)}
+                      placeholder="Suchen"
+                    />
+                  </div>
+                )}
+                {!inboxOpen ? null : visibleMessages.length === 0 ? (
+                  <p style={s.empty}>
+                    {messages.length === 0 ? "Keine Nachrichten"
+                      : msgTerm ? `Kein Treffer für "${msgSearch.trim()}"`
+                      : "Keine ungelesenen Nachrichten"}
+                  </p>
                 ) : (
-                  messages.map(m => {
+                  visibleMessages.map(m => {
                     const open = expandedMsgs.has(m.id);
                     return (
                       <div key={m.id} style={{ ...s.msgRow, ...(m.is_read ? {} : s.msgRowUnread) }}>
@@ -777,7 +840,7 @@ export default function Admin({ user, onLogout }) {
                                   Als gelesen markieren
                                 </button>
                               )}
-                              <button className="btn-danger-hover" style={s.deleteBtn} onClick={() => handleDeleteMessage(m.id)}>
+                              <button className="btn-danger-hover" style={s.deleteBtn} onClick={() => handleDeleteMessage(m)}>
                                 Löschen
                               </button>
                             </div>
@@ -791,11 +854,12 @@ export default function Admin({ user, onLogout }) {
 
               {/* ── Active users ── */}
               <section style={s.section}>
-                <div style={s.sectionHeader}>
+                <div style={{ ...s.sectionHeader, cursor: "pointer" }} onClick={() => setActiveOpen(o => !o)}>
                   <p style={s.sectionTitle}>AKTIV JETZT</p>
                   <span style={s.badge}>{activeEntries.length}</span>
+                  <span style={s.collapseChevron}>{activeOpen ? "▲" : "▼"}</span>
                 </div>
-                {activeEntries.length === 0 ? (
+                {!activeOpen ? null : activeEntries.length === 0 ? (
                   <p style={s.empty}>Niemand eingestempelt</p>
                 ) : (
                   <div style={s.activeList}>
@@ -1078,6 +1142,25 @@ const s = {
     padding: "14px 16px", borderBottom: `1px solid ${BORDER}`,
   },
   sectionTitle: { margin: 0, fontSize: "10px", color: MUTED, letterSpacing: "0.15em" },
+  collapseChevron: { marginLeft: "auto", fontSize: "10px", color: MUTED },
+  inboxTools: {
+    display: "flex", alignItems: "center", gap: "10px",
+    padding: "10px 16px", borderBottom: `1px solid ${BORDER}`,
+  },
+  msgFilterGroup: { display: "flex", gap: "6px" },
+  msgFilterBtn: {
+    background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "6px 12px", fontSize: "11px", color: MUTED, cursor: "pointer",
+    fontFamily: "inherit", letterSpacing: "0.06em",
+  },
+  msgFilterBtnActive: { borderColor: ORANGE, color: TEXT },
+  searchWrap: { display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" },
+  searchLabel: { fontSize: "10px", color: MUTED, letterSpacing: "0.12em" },
+  searchInput: {
+    background: BLACK, border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "7px 10px", fontSize: "12px", color: TEXT,
+    fontFamily: "inherit", outline: "none", width: "150px",
+  },
   badge: {
     background: ORANGE, color: "#fff", fontSize: "10px",
     fontWeight: "700", padding: "1px 7px", borderRadius: "999px",
