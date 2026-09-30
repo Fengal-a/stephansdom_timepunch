@@ -127,7 +127,7 @@ export default function Dashboard({ user, onLogout }) {
     try {
       const res = await fetch(`${API}/users/status`, { headers: authHeaders() });
       if (res.status === 401) { onLogout(); return; }
-      setStatus(await res.json());
+      if (res.ok) setStatus(await res.json());
     } catch {}
   }
 

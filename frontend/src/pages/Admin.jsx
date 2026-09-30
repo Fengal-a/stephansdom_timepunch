@@ -550,6 +550,7 @@ export default function Admin({ user, onLogout }) {
   const [inboxOpen,        setInboxOpen]        = useState(true);
   const [msgFilter,        setMsgFilter]        = useState("all");
   const [msgSearch,        setMsgSearch]        = useState("");
+  const [loadError,        setLoadError]        = useState("");
   const [activeOpen,       setActiveOpen]       = useState(true);
   const [loading,       setLoading]       = useState(true);
   const [page,          setPage]          = useState("admin"); // "admin" | "dienstplan"
@@ -570,11 +571,16 @@ export default function Admin({ user, onLogout }) {
         fetch(`${API}/messages`,             { headers: authHeaders() }),
       ]);
       if (uRes.status === 401) { onLogout(); return; }
-      setUsers(await uRes.json());
-      setEntries(await eRes.json());
-      setActiveEntries(await aRes.json());
+      // Never parse a failed response into state: these feed .filter()/.map()
+      // in render, so an error body like {detail:"..."} would crash the panel.
+      if (uRes.ok) setUsers(await uRes.json());
+      if (eRes.ok) setEntries(await eRes.json());
+      if (aRes.ok) setActiveEntries(await aRes.json());
       if (mRes.ok) setMessages(await mRes.json());
-    } catch {}
+      setLoadError(uRes.ok ? "" : `Daten konnten nicht geladen werden (HTTP ${uRes.status})`);
+    } catch {
+      setLoadError("Keine Verbindung zum Server");
+    }
     setLoading(false);
   }
 
@@ -716,6 +722,13 @@ export default function Admin({ user, onLogout }) {
             </header>
 
             <main style={s.main}>
+
+              {loadError && (
+                <div style={s.loadErrorBox}>
+                  {loadError}
+                  <button className="btn-ghost-hover" style={s.ghostBtn} onClick={fetchAll}>Erneut versuchen</button>
+                </div>
+              )}
 
               {/* ── Mitarbeiter list view ── */}
               {subPage === "mitarbeiter" && (
@@ -1143,6 +1156,12 @@ const s = {
   },
   sectionTitle: { margin: 0, fontSize: "10px", color: MUTED, letterSpacing: "0.15em" },
   collapseChevron: { marginLeft: "auto", fontSize: "10px", color: MUTED },
+  loadErrorBox: {
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px",
+    margin: "0 0 14px", padding: "12px 16px", borderRadius: "3px",
+    background: "rgba(224,80,48,0.1)", border: "1px solid rgba(224,80,48,0.3)",
+    fontSize: "12px", color: "#E05030",
+  },
   inboxTools: {
     display: "flex", alignItems: "center", gap: "10px",
     padding: "10px 16px", borderBottom: `1px solid ${BORDER}`,
