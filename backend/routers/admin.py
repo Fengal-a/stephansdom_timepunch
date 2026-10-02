@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import List
 import bcrypt
@@ -17,6 +18,7 @@ from ..schemas import UserOut, TimeEntryOut, UserCreate, LunchRequest
 from .auth import require_admin, get_current_user
 from ..email_utils import send_invite_email
 
+VIENNA_TZ  = ZoneInfo("Europe/Vienna")
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
@@ -256,14 +258,15 @@ def set_lunch_for_entry(
     entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
-    date = entry.punch_in.date()
+    date = entry.punch_in.astimezone(VIENNA_TZ).date()
     try:
         h_s, m_s = map(int, payload.lunch_start.split(":"))
         h_e, m_e = map(int, payload.lunch_end.split(":"))
     except Exception:
         raise HTTPException(status_code=422, detail="Ungültiges Zeitformat")
-    ls = datetime(date.year, date.month, date.day, h_s, m_s, tzinfo=timezone.utc)
-    le = datetime(date.year, date.month, date.day, h_e, m_e, tzinfo=timezone.utc)
+    # The admin types Vienna wall-clock time; store it as the matching UTC instant.
+    ls = datetime(date.year, date.month, date.day, h_s, m_s, tzinfo=VIENNA_TZ).astimezone(timezone.utc)
+    le = datetime(date.year, date.month, date.day, h_e, m_e, tzinfo=VIENNA_TZ).astimezone(timezone.utc)
     if le <= ls:
         raise HTTPException(status_code=422, detail="Endzeit muss nach Startzeit liegen")
     entry.lunch_start = ls

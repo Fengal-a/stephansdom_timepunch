@@ -113,7 +113,9 @@ def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.username == form.username).first()
+    # Usernames are always stored lowercase, but phone keyboards capitalise the
+    # first letter, so normalise the input instead of failing the lookup.
+    user = db.query(User).filter(User.username == form.username.strip().lower()).first()
     if not user:
         raise HTTPException(status_code=401, detail="Ungültiger Benutzername oder Passwort")
 

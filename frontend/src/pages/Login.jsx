@@ -68,6 +68,8 @@ export default function Login({ onLogin, onForgot }) {
               required
               disabled={loading}
               placeholder="mustermann"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
 

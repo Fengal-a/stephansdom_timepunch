@@ -156,12 +156,12 @@ def set_lunch(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(VIENNA_TZ).date()
     entry = (
         db.query(TimeEntry)
         .filter(
             TimeEntry.user_id == current_user.id,
-            TimeEntry.punch_in >= datetime(today.year, today.month, today.day, tzinfo=timezone.utc),
+            TimeEntry.punch_in >= datetime(today.year, today.month, today.day, tzinfo=VIENNA_TZ),
         )
         .order_by(TimeEntry.punch_in.desc())
         .first()
@@ -175,8 +175,9 @@ def set_lunch(
         raise HTTPException(status_code=422, detail="Ungültiges Zeitformat (HH:MM erwartet)")
     if not (0 <= h_s <= 23 and 0 <= m_s <= 59 and 0 <= h_e <= 23 and 0 <= m_e <= 59):
         raise HTTPException(status_code=422, detail="Ungültige Uhrzeit")
-    ls = datetime(today.year, today.month, today.day, h_s, m_s, tzinfo=timezone.utc)
-    le = datetime(today.year, today.month, today.day, h_e, m_e, tzinfo=timezone.utc)
+    # The employee types Vienna wall-clock time; store it as the matching UTC instant.
+    ls = datetime(today.year, today.month, today.day, h_s, m_s, tzinfo=VIENNA_TZ).astimezone(timezone.utc)
+    le = datetime(today.year, today.month, today.day, h_e, m_e, tzinfo=VIENNA_TZ).astimezone(timezone.utc)
     if le <= ls:
         raise HTTPException(status_code=422, detail="Endzeit muss nach Startzeit liegen")
     entry.lunch_start = ls
