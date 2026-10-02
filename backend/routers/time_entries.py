@@ -20,6 +20,11 @@ CHECKIN_CUTOFF  = (9, 5)  # 09:05 Vienna time
 
 _ALL_NETWORKS = ",".join(filter(None, [OFFICE_NETWORKS, BUERO_NETWORKS]))
 
+# Any group may punch at any time; only Homeoffice may punch from outside the
+# networks. Employees with no group keep both restrictions.
+WORK_GROUPS   = ("Domführer", "Aufsicht", "Mesner", "Homeoffice")
+REMOTE_GROUPS = ("Homeoffice",)
+
 
 def _is_office_ip(client_ip: str) -> bool:
     if not _ALL_NETWORKS:
@@ -98,13 +103,16 @@ def punch(
     is_punch_in = open_entry is None
 
     if not current_user.is_admin:
-        client_ip = request.headers.get("X-Real-IP") or request.client.host
-        if not _is_office_ip(client_ip):
-            raise HTTPException(
-                status_code=403,
-                detail="Stempeln nur im Stephansdom-WLAN möglich.",
-            )
-        if is_punch_in and _past_checkin_cutoff():
+        group = (current_user.work_group or "").strip()
+
+        if group not in REMOTE_GROUPS:
+            client_ip = request.headers.get("X-Real-IP") or request.client.host
+            if not _is_office_ip(client_ip):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Stempeln nur im Stephansdom-WLAN möglich.",
+                )
+        if not group and is_punch_in and _past_checkin_cutoff():
             raise HTTPException(
                 status_code=403,
                 detail="Einstempeln nach 09:05 Uhr nicht möglich. Bitte den Administrator kontaktieren.",

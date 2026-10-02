@@ -4,6 +4,15 @@ import ShiftCalendar from "./ShiftCalendar";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
+const WORK_GROUPS = ["Domführer", "Aufsicht", "Mesner", "Homeoffice"];
+const GROUP_HINTS = {
+  "":           "Nur im WLAN und nur bis 09:05 Uhr einstempeln.",
+  "Domführer":  "Im WLAN, aber zu jeder Uhrzeit.",
+  "Aufsicht":   "Im WLAN, aber zu jeder Uhrzeit.",
+  "Mesner":     "Im WLAN, aber zu jeder Uhrzeit.",
+  "Homeoffice": "Von überall und zu jeder Uhrzeit.",
+};
+
 function authHeaders() {
   const token = localStorage.getItem("token");
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -68,7 +77,7 @@ function exportCSV(entries, users) {
 // ── Add User Modal ────────────────────────────────────────────────────────────
 
 function AddUserModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", password: "" });
+  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", password: "", work_group: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const inviteMode = form.email.trim().length > 0;
@@ -123,6 +132,15 @@ function AddUserModal({ onClose, onCreated }) {
             />
           </div>
         ))}
+        <div style={s.field}>
+          <label style={s.label}>Gruppe</label>
+          <select style={s.input} value={form.work_group}
+            onChange={e => setForm(p => ({ ...p, work_group: e.target.value }))}>
+            <option value="">Keine Gruppe</option>
+            {WORK_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
+          <p style={s.fieldHint}>{GROUP_HINTS[form.work_group] ?? GROUP_HINTS[""]}</p>
+        </div>
         <div style={s.modalBtns}>
           <button className="btn-ghost-hover" style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
           <button className="btn-orange-hover" style={s.confirmBtn} onClick={handleSubmit} disabled={loading}>
@@ -290,7 +308,7 @@ function ResetPasswordModal({ user: targetUser, onClose }) {
 // ── Edit User Modal ───────────────────────────────────────────────────────────
 
 function EditUserModal({ user: targetUser, onClose, onSaved }) {
-  const [form,     setForm]     = useState({ first_name: targetUser.first_name ?? "", last_name: targetUser.last_name ?? "", username: targetUser.username, email: targetUser.email ?? "", is_admin: targetUser.is_admin, expected_hours: targetUser.expected_hours ?? 8 });
+  const [form,     setForm]     = useState({ first_name: targetUser.first_name ?? "", last_name: targetUser.last_name ?? "", username: targetUser.username, email: targetUser.email ?? "", is_admin: targetUser.is_admin, expected_hours: targetUser.expected_hours ?? 8, work_group: targetUser.work_group ?? "" });
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
   const [pwError,  setPwError]  = useState("");
@@ -363,6 +381,15 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
             value={form.expected_hours}
             onChange={e => setForm(p => ({ ...p, expected_hours: e.target.value }))}
           />
+        </div>
+        <div style={s.field}>
+          <label style={s.label}>Gruppe</label>
+          <select style={s.input} value={form.work_group}
+            onChange={e => setForm(p => ({ ...p, work_group: e.target.value }))}>
+            <option value="">Keine Gruppe</option>
+            {WORK_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
+          <p style={s.fieldHint}>{GROUP_HINTS[form.work_group] ?? GROUP_HINTS[""]}</p>
         </div>
         <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
           <label style={s.label}>Passwort zurücksetzen</label>
@@ -770,6 +797,7 @@ export default function Admin({ user, onLogout }) {
                           </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                          {u.work_group && <span style={s.groupTag}>{u.work_group}</span>}
                           <span style={{ fontSize: "12px", color: statusColor }}>{statusLabel}</span>
                           {u.email && (
                             <button
@@ -1309,6 +1337,11 @@ const s = {
     background: BLACK, border: `1px solid ${BORDER}`, borderRadius: "3px",
     padding: "11px 12px", fontSize: "14px", color: TEXT,
     fontFamily: "inherit", outline: "none",
+  },
+  fieldHint:  { margin: "4px 0 0", fontSize: "10px", color: MUTED, letterSpacing: "0.04em" },
+  groupTag: {
+    fontSize: "10px", color: MUTED, border: `1px solid ${BORDER}`,
+    borderRadius: "999px", padding: "1px 8px", letterSpacing: "0.06em",
   },
   checkRow:   { display: "flex", alignItems: "center", gap: "10px" },
   modalBtns:  { display: "flex", gap: "10px", marginTop: "4px" },

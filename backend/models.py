@@ -25,6 +25,7 @@ class User(Base):
     failed_login_attempts  = Column(Integer, default=0, nullable=False, server_default="0")
     locked_until           = Column(DateTime(timezone=True), nullable=True)
     expected_hours         = Column(Float, default=8.0, nullable=False, server_default="8.0")
+    work_group             = Column(String, nullable=True)  # "group" is reserved in SQL
 
     time_entries = relationship("TimeEntry", back_populates="user")
 

@@ -16,9 +16,18 @@ from ..database import get_db
 from ..models import User, TimeEntry
 from ..schemas import UserOut, TimeEntryOut, UserCreate, LunchRequest
 from .auth import require_admin, get_current_user
+from .time_entries import WORK_GROUPS
 from ..email_utils import send_invite_email
 
 VIENNA_TZ  = ZoneInfo("Europe/Vienna")
+
+
+def _clean_group(value) -> str | None:
+    """Empty/unknown values mean "no group", which keeps the default restrictions."""
+    group = (value or "").strip()
+    return group if group in WORK_GROUPS else None
+
+
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
@@ -87,6 +96,7 @@ def create_user(
         email=payload.email.lower() if payload.email else None,
         password_hash=hashed,
         is_admin=payload.is_admin,
+        work_group=_clean_group(payload.work_group),
     )
     db.add(user)
     db.commit()
@@ -182,6 +192,8 @@ def update_user(
         user.email = new_email
     if "is_admin" in payload:
         user.is_admin = bool(payload["is_admin"])
+    if "work_group" in payload:
+        user.work_group = _clean_group(payload["work_group"])
     if "expected_hours" in payload:
         try:
             user.expected_hours = float(payload["expected_hours"])
