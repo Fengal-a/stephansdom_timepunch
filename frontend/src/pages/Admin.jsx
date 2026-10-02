@@ -49,8 +49,12 @@ function exportCSV(entries, users) {
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   };
 
+  // Decimal hours with a German comma: Excel reads these as numbers, whereas
+  // anything clock-shaped ("8:00") gets reinterpreted as a date.
+  const hours = mins => (mins / 60).toFixed(2).replace(".", ",");
+
   const rows = [
-    ["Name", "Einstempeln", "Ausstempeln", "SOLL-Arbeitszeit (h)", "IST-Arbeitszeit (h)", "Notizen"],
+    ["Name", "Einstempeln", "Ausstempeln", "Mittagspause (min)", "SOLL-Arbeitszeit (h)", "IST-Arbeitszeit (h)", "Notizen"],
     ...Object.entries(byUser).map(([userId, userEntries]) => {
       const user  = userMap[userId];
       const name  = user?.name ?? userId;
@@ -59,9 +63,25 @@ function exportCSV(entries, users) {
       const firstIn = sorted[0]?.punch_in;
       const lastOut = [...sorted].reverse().find(e => e.punch_out)?.punch_out;
 
+      const lunchMin = userEntries.reduce((acc, e) => acc + (
+        e.lunch_start && e.lunch_end
+          ? Math.max(0, Math.round((new Date(e.lunch_end) - new Date(e.lunch_start)) / 60000))
+          : 0
+      ), 0);
+      const grossMin = userEntries.reduce((acc, e) => acc + (e.duration_minutes ?? 0), 0);
+      const netMin   = Math.max(0, grossMin - lunchMin);
+
       const notes = userEntries.filter(e => e.note).map(e => e.note).join("; ");
 
-      return [name, toTime(firstIn), lastOut ? toTime(lastOut) : "läuft", "", "", notes];
+      return [
+        name,
+        toTime(firstIn),
+        lastOut ? toTime(lastOut) : "läuft",
+        lunchMin || "",
+        hours((user?.expected_hours ?? 8) * 60),
+        grossMin ? hours(netMin) : "",
+        notes,
+      ];
     }),
   ];
 

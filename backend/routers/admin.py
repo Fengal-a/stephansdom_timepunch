@@ -368,10 +368,12 @@ def export_monthly(
         .all()
     )
 
+    # Stored instants are UTC; the Postgres session timezone in the container is
+    # UTC too, so convert explicitly or every time reads an hour or two early.
     def fmt_dt(dt):
         if not dt:
             return ""
-        return dt.strftime("%d.%m.%Y %H:%M")
+        return dt.astimezone(VIENNA_TZ).strftime("%d.%m.%Y %H:%M")
 
     def fmt_dur(mins):
         if mins is None:
@@ -392,9 +394,10 @@ def export_monthly(
     for e in entries:
         lunch = ""
         if e.lunch_start and e.lunch_end:
-            lunch = f"{e.lunch_start.strftime('%H:%M')} – {e.lunch_end.strftime('%H:%M')}"
+            lunch = (f"{e.lunch_start.astimezone(VIENNA_TZ).strftime('%H:%M')} – "
+                     f"{e.lunch_end.astimezone(VIENNA_TZ).strftime('%H:%M')}")
         writer.writerow([
-            e.punch_in.strftime("%d.%m.%Y") if e.punch_in else "",
+            e.punch_in.astimezone(VIENNA_TZ).strftime("%d.%m.%Y") if e.punch_in else "",
             fmt_dt(e.punch_in),
             fmt_dt(e.punch_out) if e.punch_out else "läuft",
             fmt_dur(e.duration_minutes),
