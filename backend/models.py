@@ -41,8 +41,29 @@ class TimeEntry(Base):
     note        = Column(String, nullable=True)
     lunch_start = Column(DateTime(timezone=True), nullable=True)
     lunch_end   = Column(DateTime(timezone=True), nullable=True)
+    # Audit trail for manual corrections. The admin's name is denormalised so the
+    # record survives that admin later being deleted.
+    edited_at   = Column(DateTime(timezone=True), nullable=True)
+    edited_by   = Column(String, nullable=True)
 
     user = relationship("User", back_populates="time_entries")
+
+
+class TimeEntryEdit(Base):
+    """Full history of manual punch-time corrections. Written on every edit and
+    never shown in the app — the UI only displays the latest change. Read it with
+    the query in the README when a correction needs to be reconstructed."""
+    __tablename__ = "time_entry_edits"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    entry_id       = Column(Integer, index=True, nullable=False)  # no FK: survives entry deletion
+    user_id        = Column(Integer, nullable=False)
+    edited_at      = Column(DateTime(timezone=True), server_default=func.now())
+    edited_by      = Column(String, nullable=True)
+    old_punch_in   = Column(DateTime(timezone=True), nullable=True)
+    old_punch_out  = Column(DateTime(timezone=True), nullable=True)
+    new_punch_in   = Column(DateTime(timezone=True), nullable=True)
+    new_punch_out  = Column(DateTime(timezone=True), nullable=True)
 
 
 class ShiftCell(Base):

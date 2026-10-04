@@ -43,18 +43,27 @@ function exportCSV(entries, users) {
     byUser[e.user_id].push(e);
   });
 
-  const toTime = iso => {
+  // Every cell below carries a letter ("Uhr", "h", "min") on purpose: a bare
+  // "07:00" or "8,0" gets reinterpreted as a time, date or number on import,
+  // whereas text containing letters is left exactly as written.
+  const clock = iso => {
     if (!iso) return "";
     const d = new Date(iso);
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   };
+  const toTime = iso => (iso ? `${clock(iso)} Uhr` : "");
 
-  // Decimal hours with a German comma: Excel reads these as numbers, whereas
-  // anything clock-shaped ("8:00") gets reinterpreted as a date.
-  const hours = mins => (mins / 60).toFixed(2).replace(".", ",");
+  const dur = mins => {
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return `${h}:${String(m).padStart(2, "0")} Std.`;
+  };
+
+  const lunchRange = (start, end) => start && end
+    ? `${toTime(start)} - ${toTime(end)}`
+    : "";
 
   const rows = [
-    ["Name", "Einstempeln", "Ausstempeln", "Mittagspause (min)", "SOLL-Arbeitszeit (h)", "IST-Arbeitszeit (h)", "Notizen"],
+    ["Name", "Einstempeln", "Ausstempeln", "Mittagspause", "SOLL-Arbeitszeit", "IST-Arbeitszeit", "Notizen"],
     ...Object.entries(byUser).map(([userId, userEntries]) => {
       const user  = userMap[userId];
       const name  = user?.name ?? userId;
@@ -71,15 +80,17 @@ function exportCSV(entries, users) {
       const grossMin = userEntries.reduce((acc, e) => acc + (e.duration_minutes ?? 0), 0);
       const netMin   = Math.max(0, grossMin - lunchMin);
 
+      const withLunch = sorted.find(e => e.lunch_start && e.lunch_end);
+
       const notes = userEntries.filter(e => e.note).map(e => e.note).join("; ");
 
       return [
         name,
         toTime(firstIn),
         lastOut ? toTime(lastOut) : "läuft",
-        lunchMin || "",
-        hours((user?.expected_hours ?? 8) * 60),
-        grossMin ? hours(netMin) : "",
+        withLunch ? lunchRange(withLunch.lunch_start, withLunch.lunch_end) : "",
+        dur(Math.round((user?.expected_hours ?? 8) * 60)),
+        grossMin ? dur(netMin) : "",
         notes,
       ];
     }),
@@ -499,6 +510,63 @@ function AdminLunchModal({ entry, onClose, onSaved }) {
   );
 }
 
+// ── Edit Punch Times Modal ────────────────────────────────────────────────────
+
+function EditTimesModal({ entry, onClose, onSaved }) {
+  const clock = iso => iso
+    ? `${String(new Date(iso).getHours()).padStart(2, "0")}:${String(new Date(iso).getMinutes()).padStart(2, "0")}`
+    : "";
+
+  const [from,    setFrom]    = useState(clock(entry.punch_in));
+  const [till,    setTill]    = useState(clock(entry.punch_out));
+  const [error,   setError]   = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSave() {
+    setLoading(true); setError("");
+    try {
+      const res = await fetch(`${API}/admin/entries/${entry.id}`, {
+        method: "PATCH", headers: authHeaders(),
+        body: JSON.stringify({ punch_in: from, punch_out: till }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail); }
+      onSaved();
+    } catch(e) { setError(e.message); }
+    setLoading(false);
+  }
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={e => e.stopPropagation()}>
+        <p style={s.modalTitle}>✎ Zeiten ändern</p>
+        <p style={{ margin: 0, fontSize: "12px", color: MUTED }}>
+          Eintrag vom {formatDate(entry.punch_in)}
+        </p>
+        {error && <p style={s.errorBox}>{error}</p>}
+        <div style={{ display: "flex", gap: "12px" }}>
+          <div style={{ ...s.field, flex: 1 }}>
+            <label style={s.label}>Einstempeln</label>
+            <input type="time" style={s.input} value={from} onChange={e => setFrom(e.target.value)} />
+          </div>
+          <div style={{ ...s.field, flex: 1 }}>
+            <label style={s.label}>Ausstempeln</label>
+            <input type="time" style={s.input} value={till} onChange={e => setTill(e.target.value)} />
+          </div>
+        </div>
+        <p style={s.fieldHint}>
+          Leeres Ausstempel-Feld lässt den Eintrag offen. Die Dauer wird automatisch neu berechnet.
+        </p>
+        <div style={s.modalBtns}>
+          <button className="btn-ghost-hover" style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+          <button className="btn-orange-hover" style={s.confirmBtn} onClick={handleSave} disabled={loading}>
+            {loading ? "..." : "Speichern"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Admin Compose Modal ───────────────────────────────────────────────────────
 
 function ComposeModal({ users, onClose, onSent }) {
@@ -591,6 +659,9 @@ export default function Admin({ user, onLogout }) {
   const [showMonthlyExport, setShowMonthlyExport] = useState(false);
   const [resetUser,        setResetUser]        = useState(null);
   const [lunchEntry,       setLunchEntry]       = useState(null);
+  const [timesEntry,       setTimesEntry]       = useState(null);
+  // "sv-SE" formats as YYYY-MM-DD, which is what <input type="date"> expects.
+  const [entriesDate,      setEntriesDate]      = useState(() => new Date().toLocaleDateString("sv-SE"));
   const [editUser,         setEditUser]         = useState(null);
   const [invitingId,       setInvitingId]       = useState(null);
   const [userSearch,       setUserSearch]       = useState("");
@@ -606,14 +677,14 @@ export default function Admin({ user, onLogout }) {
   const [expandedMsgs,  setExpandedMsgs]  = useState(new Set());
   const touchStartX                       = useRef(null);
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { fetchAll(); }, [entriesDate]);
 
   async function fetchAll() {
     setLoading(true);
     try {
       const [uRes, eRes, aRes, mRes] = await Promise.all([
         fetch(`${API}/admin/users`,          { headers: authHeaders() }),
-        fetch(`${API}/admin/entries/today`,  { headers: authHeaders() }),
+        fetch(`${API}/admin/entries/today?date=${entriesDate}`, { headers: authHeaders() }),
         fetch(`${API}/admin/entries/active`, { headers: authHeaders() }),
         fetch(`${API}/messages`,             { headers: authHeaders() }),
       ]);
@@ -945,7 +1016,25 @@ export default function Admin({ user, onLogout }) {
 
               {/* ── Toolbar ── */}
               <div style={s.toolbar}>
-                <p style={s.sectionTitle}>HEUTE — {formatDate(new Date().toISOString())}</p>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <p style={s.sectionTitle}>
+                    {entriesDate === new Date().toLocaleDateString("sv-SE") ? "HEUTE" : "TAG"}
+                  </p>
+                  <input
+                    type="date" style={s.dateInput}
+                    value={entriesDate}
+                    max={new Date().toLocaleDateString("sv-SE")}
+                    onChange={e => setEntriesDate(e.target.value || new Date().toLocaleDateString("sv-SE"))}
+                  />
+                  {entriesDate !== new Date().toLocaleDateString("sv-SE") && (
+                    <button
+                      className="btn-ghost-hover" style={s.ghostBtn}
+                      onClick={() => setEntriesDate(new Date().toLocaleDateString("sv-SE"))}
+                    >
+                      Heute
+                    </button>
+                  )}
+                </div>
                 <div style={s.toolbarBtns}>
                   <button className="btn-ghost-hover" style={s.ghostBtn} onClick={() => exportCSV(entries, users)}>
                     ↓ Täglicher Export
@@ -1010,7 +1099,18 @@ export default function Admin({ user, onLogout }) {
                                     </p>
                                   )}
                                   {e.note && <p style={s.entryNote}>"{e.note}"</p>}
+                                  {e.edited_at && (
+                                    <p style={s.entryEdited}>
+                                      ✎ geändert{e.edited_by ? ` von ${e.edited_by}` : ""} am {formatDate(e.edited_at)} {formatTime(e.edited_at)}
+                                    </p>
+                                  )}
                                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                                    <button
+                                      className="btn-ghost-hover" style={s.lunchEntryBtn}
+                                      onClick={() => setTimesEntry(e)}
+                                    >
+                                      ✎ Zeiten ändern
+                                    </button>
                                     <button
                                       className="btn-ghost-hover" style={s.lunchEntryBtn}
                                       onClick={() => setLunchEntry(e)}
@@ -1093,6 +1193,13 @@ export default function Admin({ user, onLogout }) {
           entry={lunchEntry}
           onClose={() => setLunchEntry(null)}
           onSaved={() => { setLunchEntry(null); fetchAll(); }}
+        />
+      )}
+      {timesEntry && (
+        <EditTimesModal
+          entry={timesEntry}
+          onClose={() => setTimesEntry(null)}
+          onSaved={() => { setTimesEntry(null); fetchAll(); }}
         />
       )}
       {editUser && (
@@ -1359,6 +1466,12 @@ const s = {
     fontFamily: "inherit", outline: "none",
   },
   fieldHint:  { margin: "4px 0 0", fontSize: "10px", color: MUTED, letterSpacing: "0.04em" },
+  entryEdited: { margin: "4px 0 0", fontSize: "10px", color: MUTED, fontStyle: "italic" },
+  dateInput: {
+    background: BLACK, border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "6px 10px", fontSize: "11px", color: TEXT,
+    fontFamily: "inherit", outline: "none", colorScheme: "dark",
+  },
   groupTag: {
     fontSize: "10px", color: MUTED, border: `1px solid ${BORDER}`,
     borderRadius: "999px", padding: "1px 8px", letterSpacing: "0.06em",

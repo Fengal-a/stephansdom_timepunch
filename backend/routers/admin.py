@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from zoneinfo import ZoneInfo
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 import bcrypt
 import secrets
 import re
@@ -13,7 +13,7 @@ import csv
 import io
 
 from ..database import get_db
-from ..models import User, TimeEntry
+from ..models import User, TimeEntry, TimeEntryEdit
 from ..schemas import UserOut, TimeEntryOut, UserCreate, LunchRequest
 from .auth import require_admin, get_current_user
 from .time_entries import WORK_GROUPS
@@ -225,13 +225,24 @@ def delete_user(
 
 @router.get("/entries/today", response_model=List[TimeEntryOut])
 def get_todays_entries(
+    date_str: Optional[str] = Query(None, alias="date"),
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    today = datetime.now(timezone.utc).date()
+    """Entries for one Vienna calendar day; defaults to today when no date given."""
+    if date_str:
+        try:
+            day = date.fromisoformat(date_str)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Ungültiges Datum (YYYY-MM-DD erwartet)")
+    else:
+        day = datetime.now(VIENNA_TZ).date()
+
+    start = datetime(day.year, day.month, day.day, tzinfo=VIENNA_TZ)
+    end   = start + timedelta(days=1)
     return (
         db.query(TimeEntry)
-        .filter(TimeEntry.punch_in >= datetime(today.year, today.month, today.day, tzinfo=timezone.utc))
+        .filter(TimeEntry.punch_in >= start, TimeEntry.punch_in < end)
         .order_by(TimeEntry.punch_in.desc())
         .all()
     )
@@ -285,6 +296,59 @@ def set_lunch_for_entry(
     entry.lunch_end   = le
     db.commit()
     return {"ok": True}
+
+
+@router.patch("/entries/{entry_id}", response_model=TimeEntryOut)
+def update_entry_times(
+    entry_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin),
+):
+    """Manually correct an entry's punch times, e.g. an employee who forgot to
+    clock in. Times are Vienna wall-clock on the entry's existing date."""
+    entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
+
+    def parse(value: str) -> datetime:
+        h, m = map(int, value.split(":"))
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            raise ValueError
+        date = entry.punch_in.astimezone(VIENNA_TZ).date()
+        return datetime(date.year, date.month, date.day, h, m, tzinfo=VIENNA_TZ).astimezone(timezone.utc)
+
+    try:
+        new_in  = parse(payload["punch_in"]) if payload.get("punch_in") else entry.punch_in
+        raw_out = payload.get("punch_out")
+        if raw_out is None:
+            new_out = entry.punch_out
+        else:
+            new_out = parse(raw_out) if raw_out.strip() else None
+    except (ValueError, KeyError, AttributeError):
+        raise HTTPException(status_code=422, detail="Ungültiges Zeitformat (HH:MM erwartet)")
+
+    if new_out and new_out <= new_in:
+        raise HTTPException(status_code=422, detail="Ausstempelzeit muss nach der Einstempelzeit liegen")
+
+    db.add(TimeEntryEdit(
+        entry_id=entry.id,
+        user_id=entry.user_id,
+        edited_by=current_admin.name,
+        old_punch_in=entry.punch_in,
+        old_punch_out=entry.punch_out,
+        new_punch_in=new_in,
+        new_punch_out=new_out,
+    ))
+
+    entry.punch_in         = new_in
+    entry.punch_out        = new_out
+    entry.duration_minutes = int((new_out - new_in).total_seconds() / 60) if new_out else None
+    entry.edited_at        = datetime.now(timezone.utc)
+    entry.edited_by        = current_admin.name
+    db.commit()
+    db.refresh(entry)
+    return entry
 
 
 @router.delete("/entries/{entry_id}")
@@ -370,10 +434,13 @@ def export_monthly(
 
     # Stored instants are UTC; the Postgres session timezone in the container is
     # UTC too, so convert explicitly or every time reads an hour or two early.
-    def fmt_dt(dt):
+    # Every cell carries a letter ("Uhr", "h", "min") on purpose: a bare "07:00"
+    # or "8,0" gets reinterpreted as a time, date or number by the spreadsheet,
+    # whereas text containing letters is left exactly as written.
+    def fmt_time(dt):
         if not dt:
             return ""
-        return dt.astimezone(VIENNA_TZ).strftime("%d.%m.%Y %H:%M")
+        return dt.astimezone(VIENNA_TZ).strftime("%H:%M") + " Uhr"
 
     def fmt_dur(mins):
         if mins is None:
@@ -381,32 +448,49 @@ def export_monthly(
         h, m = divmod(mins, 60)
         return f"{h}h {m:02d}min"
 
-    total_minutes = sum(e.duration_minutes or 0 for e in entries)
+    def lunch_minutes(e) -> int:
+        if not (e.lunch_start and e.lunch_end):
+            return 0
+        return max(0, int((e.lunch_end - e.lunch_start).total_seconds() / 60))
+
+    def fmt_std(mins) -> str:
+        h, m = divmod(mins, 60)
+        return f"{h}:{m:02d} Std."
+
+    def fmt_lunch(e) -> str:
+        if not (e.lunch_start and e.lunch_end):
+            return ""
+        return f"{fmt_time(e.lunch_start)} - {fmt_time(e.lunch_end)}"
+
+    total_gross = sum(e.duration_minutes or 0 for e in entries)
+    total_lunch = sum(lunch_minutes(e) for e in entries)
+    total_net   = max(0, total_gross - total_lunch)
+    total_soll  = (user.expected_hours or 0) * len(entries)
 
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
 
-    writer.writerow(["Mitarbeiter", user.name])
-    writer.writerow(["Zeitraum", f"{month:02d}/{year}"])
+    writer.writerow(["Mitarbeiter", user.name, f"{month:02d}/{year}"])
     writer.writerow([])
-    writer.writerow(["Datum", "Einstempeln", "Ausstempeln", "Dauer", "Mittagspause", "Notiz"])
+    writer.writerow(["Datum", "Einstempeln", "Ausstempeln", "Dauer", "Mittagspause",
+                     "SOLL-Arbeitszeit", "IST-Arbeitszeit", "Notiz"])
 
     for e in entries:
-        lunch = ""
-        if e.lunch_start and e.lunch_end:
-            lunch = (f"{e.lunch_start.astimezone(VIENNA_TZ).strftime('%H:%M')} – "
-                     f"{e.lunch_end.astimezone(VIENNA_TZ).strftime('%H:%M')}")
+        net = max(0, e.duration_minutes - lunch_minutes(e)) if e.duration_minutes is not None else None
         writer.writerow([
             e.punch_in.astimezone(VIENNA_TZ).strftime("%d.%m.%Y") if e.punch_in else "",
-            fmt_dt(e.punch_in),
-            fmt_dt(e.punch_out) if e.punch_out else "läuft",
+            fmt_time(e.punch_in),
+            fmt_time(e.punch_out) if e.punch_out else "läuft",
             fmt_dur(e.duration_minutes),
-            lunch,
+            fmt_lunch(e),
+            fmt_std(round((user.expected_hours or 0) * 60)),
+            fmt_std(net) if net is not None else "",
             e.note or "",
         ])
 
     writer.writerow([])
-    writer.writerow(["Gesamt", "", "", fmt_dur(total_minutes), ""])
+    writer.writerow(["Gesamt", "", "", fmt_dur(total_gross), fmt_dur(total_lunch),
+                     fmt_std(round(total_soll * 60)), fmt_std(total_net), ""])
 
     filename = f"timepunch_{user.username}_{year}-{month:02d}.csv"
     output.seek(0)

@@ -191,3 +191,97 @@ stephansdom/
 ├── .env                     !! NOT in git !! Your actual secrets
 ├── .gitignore
 └── pyproject.toml           Python project config and dependencies
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SQL COMMANDS (run on the server)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+All of these run from /root/stephansdom_timepunch.
+Replace 'nachname' with the actual username.
+
+Run the schema migrations (ALWAYS before rebuilding after a git pull):
+   docker compose exec -T db psql -U timepunch -d timepunch < backend/migrations.sql
+
+List all admins:
+   docker compose exec -T db psql -U timepunch -d timepunch -c \
+     "SELECT id, name, username, email, is_active, last_login_at FROM users WHERE is_admin = true ORDER BY name;"
+
+List all usernames (what employees must type to log in):
+   docker compose exec -T db psql -U timepunch -d timepunch -c \
+     "SELECT name, username, email, work_group FROM users WHERE is_admin = false ORDER BY name;"
+
+Make someone an admin (token_version bump forces a fresh login, otherwise they
+keep seeing the employee view):
+   docker compose exec -T db psql -U timepunch -d timepunch -c \
+     "UPDATE users SET is_admin = true, token_version = token_version + 1 WHERE username = 'nachname';"
+
+Remove admin rights again:
+   docker compose exec -T db psql -U timepunch -d timepunch -c \
+     "UPDATE users SET is_admin = false, token_version = token_version + 1 WHERE username = 'nachname';"
+
+Deactivate an account (blocks login, KEEPS all time records — preferred when
+someone leaves but their hours are still needed for payroll):
+   docker compose exec -T db psql -U timepunch -d timepunch -c \
+     "UPDATE users SET is_active = false, token_version = token_version + 1 WHERE username = 'nachname';"
+
+Reactivate:
+   docker compose exec -T db psql -U timepunch -d timepunch -c \
+     "UPDATE users SET is_active = true WHERE username = 'nachname';"
+
+Delete a user entirely (IRREVERSIBLE — also destroys their time records, so
+export their monthly report first). The extra DELETEs are required because
+time_entries.user_id and messages.sender_id both block the delete, and
+messages.recipient_id would otherwise be set to NULL, which in this schema
+means "message to admin" and would dump their old messages into the inbox:
+   docker compose exec -T db psql -U timepunch -d timepunch -c "
+   BEGIN;
+   DELETE FROM time_entries WHERE user_id = (SELECT id FROM users WHERE username = 'nachname');
+   DELETE FROM messages     WHERE sender_id    = (SELECT id FROM users WHERE username = 'nachname')
+                               OR recipient_id = (SELECT id FROM users WHERE username = 'nachname');
+   DELETE FROM users WHERE username = 'nachname';
+   COMMIT;"
+
+Clear a login lockout (5 wrong passwords locks an account for 15 minutes;
+setting a new password does NOT clear this):
+   docker compose exec -T db psql -U timepunch -d timepunch -c \
+     "UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE username = 'nachname';"
+
+Check why someone cannot log in (failed_login_attempts = 0 means the username
+never matched; 5 with locked_until set means wrong password):
+   docker compose exec -T db psql -U timepunch -d timepunch -c \
+     "SELECT username, is_active, failed_login_attempts, locked_until FROM users WHERE username = 'nachname';"
+
+Show how each punch-out happened (auto-closes land exactly on 21:00:00 or
+exactly 12h after punch-in; manual ones have arbitrary seconds):
+   docker compose exec -T db psql -U timepunch -d timepunch -c "
+   SELECT u.name,
+          e.punch_in  AT TIME ZONE 'Europe/Vienna' AS eingestempelt,
+          e.punch_out AT TIME ZONE 'Europe/Vienna' AS ausgestempelt,
+          e.duration_minutes AS minuten,
+          CASE WHEN to_char(e.punch_out AT TIME ZONE 'Europe/Vienna','HH24:MI:SS') = '21:00:00' THEN 'auto: 21:00-Grenze'
+               WHEN e.punch_out - e.punch_in = interval '12 hours'                              THEN 'auto: 12h-Limit'
+               ELSE 'manuell' END AS wie
+   FROM time_entries e JOIN users u ON u.id = e.user_id
+   WHERE e.punch_out IS NOT NULL ORDER BY e.punch_in DESC LIMIT 30;"
+
+Full history of manual time corrections (the app only shows the most recent
+change under each entry; this is the complete log):
+   docker compose exec -T db psql -U timepunch -d timepunch -c "
+   SELECT u.name,
+          l.edited_at AT TIME ZONE 'Europe/Vienna' AS geaendert_am,
+          l.edited_by AS geaendert_von,
+          to_char(l.old_punch_in  AT TIME ZONE 'Europe/Vienna','DD.MM. HH24:MI') AS vorher_ein,
+          to_char(l.old_punch_out AT TIME ZONE 'Europe/Vienna','HH24:MI')        AS vorher_aus,
+          to_char(l.new_punch_in  AT TIME ZONE 'Europe/Vienna','DD.MM. HH24:MI') AS nachher_ein,
+          to_char(l.new_punch_out AT TIME ZONE 'Europe/Vienna','HH24:MI')        AS nachher_aus
+   FROM time_entry_edits l JOIN users u ON u.id = l.user_id
+   ORDER BY l.edited_at DESC LIMIT 50;"
+
+Same, but for one employee only:
+   docker compose exec -T db psql -U timepunch -d timepunch -c "
+   SELECT l.edited_at AT TIME ZONE 'Europe/Vienna' AS geaendert_am, l.edited_by,
+          to_char(l.old_punch_in AT TIME ZONE 'Europe/Vienna','DD.MM. HH24:MI') AS vorher,
+          to_char(l.new_punch_in AT TIME ZONE 'Europe/Vienna','DD.MM. HH24:MI') AS nachher
+   FROM time_entry_edits l
+   WHERE l.user_id = (SELECT id FROM users WHERE username = 'nachname')
+   ORDER BY l.edited_at DESC;"

@@ -31,8 +31,13 @@ def _is_office_ip(client_ip: str) -> bool:
         return True  # restriction disabled (local dev)
     try:
         addr = ipaddress.ip_address(client_ip)
+        # nginx listens on IPv6, so an IPv4 client can arrive as ::ffff:1.2.3.4,
+        # which would never match a configured IPv4 range.
+        if getattr(addr, "ipv4_mapped", None):
+            addr = addr.ipv4_mapped
         for cidr in _ALL_NETWORKS.split(","):
-            if addr in ipaddress.ip_network(cidr.strip(), strict=False):
+            net = ipaddress.ip_network(cidr.strip(), strict=False)
+            if addr.version == net.version and addr in net:
                 return True
     except ValueError:
         pass
