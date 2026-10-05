@@ -13,6 +13,35 @@ const GROUP_HINTS = {
   "Homeoffice": "Von überall und zu jeder Uhrzeit.",
 };
 
+function cutoffHint(cutoff, group) {
+  if (cutoff) return `Einstempeln nur bis ${cutoff} Uhr — gilt vor der Gruppenregel.`;
+  return group ? "Keine Zeitgrenze (Gruppenregel)." : "Standard: Einstempeln bis 09:05 Uhr.";
+}
+
+function GroupFields({ form, setForm }) {
+  return (
+    <>
+      <div style={s.field}>
+        <label style={s.label}>Gruppe</label>
+        <select style={s.input} value={form.work_group}
+          onChange={e => setForm(p => ({ ...p, work_group: e.target.value }))}>
+          <option value="">Keine Gruppe</option>
+          {WORK_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <p style={s.fieldHint}>{GROUP_HINTS[form.work_group] ?? GROUP_HINTS[""]}</p>
+      </div>
+      <div style={s.field}>
+        <label style={s.label}>Einstempeln bis (optional)</label>
+        <input
+          type="time" style={s.input} value={form.checkin_cutoff}
+          onChange={e => setForm(p => ({ ...p, checkin_cutoff: e.target.value }))}
+        />
+        <p style={s.fieldHint}>{cutoffHint(form.checkin_cutoff, form.work_group)}</p>
+      </div>
+    </>
+  );
+}
+
 function authHeaders() {
   const token = localStorage.getItem("token");
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -108,7 +137,7 @@ function exportCSV(entries, users) {
 // ── Add User Modal ────────────────────────────────────────────────────────────
 
 function AddUserModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", password: "", work_group: "" });
+  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", password: "", work_group: "", checkin_cutoff: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const inviteMode = form.email.trim().length > 0;
@@ -163,15 +192,7 @@ function AddUserModal({ onClose, onCreated }) {
             />
           </div>
         ))}
-        <div style={s.field}>
-          <label style={s.label}>Gruppe</label>
-          <select style={s.input} value={form.work_group}
-            onChange={e => setForm(p => ({ ...p, work_group: e.target.value }))}>
-            <option value="">Keine Gruppe</option>
-            {WORK_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-          </select>
-          <p style={s.fieldHint}>{GROUP_HINTS[form.work_group] ?? GROUP_HINTS[""]}</p>
-        </div>
+        <GroupFields form={form} setForm={setForm} />
         <div style={s.modalBtns}>
           <button className="btn-ghost-hover" style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
           <button className="btn-orange-hover" style={s.confirmBtn} onClick={handleSubmit} disabled={loading}>
@@ -339,7 +360,7 @@ function ResetPasswordModal({ user: targetUser, onClose }) {
 // ── Edit User Modal ───────────────────────────────────────────────────────────
 
 function EditUserModal({ user: targetUser, onClose, onSaved }) {
-  const [form,     setForm]     = useState({ first_name: targetUser.first_name ?? "", last_name: targetUser.last_name ?? "", username: targetUser.username, email: targetUser.email ?? "", is_admin: targetUser.is_admin, expected_hours: targetUser.expected_hours ?? 8, work_group: targetUser.work_group ?? "" });
+  const [form,     setForm]     = useState({ first_name: targetUser.first_name ?? "", last_name: targetUser.last_name ?? "", username: targetUser.username, email: targetUser.email ?? "", is_admin: targetUser.is_admin, expected_hours: targetUser.expected_hours ?? 8, work_group: targetUser.work_group ?? "", checkin_cutoff: targetUser.checkin_cutoff ?? "" });
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
   const [pwError,  setPwError]  = useState("");
@@ -413,15 +434,7 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
             onChange={e => setForm(p => ({ ...p, expected_hours: e.target.value }))}
           />
         </div>
-        <div style={s.field}>
-          <label style={s.label}>Gruppe</label>
-          <select style={s.input} value={form.work_group}
-            onChange={e => setForm(p => ({ ...p, work_group: e.target.value }))}>
-            <option value="">Keine Gruppe</option>
-            {WORK_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-          </select>
-          <p style={s.fieldHint}>{GROUP_HINTS[form.work_group] ?? GROUP_HINTS[""]}</p>
-        </div>
+        <GroupFields form={form} setForm={setForm} />
         <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: "14px", display: "flex", flexDirection: "column", gap: "6px" }}>
           <label style={s.label}>Passwort zurücksetzen</label>
           <div style={{ display: "flex", gap: "8px" }}>
@@ -737,6 +750,10 @@ export default function Admin({ user, onLogout }) {
   }
 
   async function handleResendInvite(user) {
+    if (!confirm(
+      `Neue Einladung an ${user.name} (${user.email}) senden?\n\n`
+      + "Ein bereits verschickter Einladungslink wird dadurch ungültig."
+    )) return;
     setInvitingId(user.id);
     try {
       const res  = await fetch(`${API}/admin/users/${user.id}/resend-invite`, {

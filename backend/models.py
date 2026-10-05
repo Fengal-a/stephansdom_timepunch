@@ -26,6 +26,8 @@ class User(Base):
     locked_until           = Column(DateTime(timezone=True), nullable=True)
     expected_hours         = Column(Float, default=8.0, nullable=False, server_default="8.0")
     work_group             = Column(String, nullable=True)  # "group" is reserved in SQL
+    # "HH:MM" Vienna time. Overrides both the 09:05 default and the group rule.
+    checkin_cutoff         = Column(String, nullable=True)
 
     time_entries = relationship("TimeEntry", back_populates="user")
 

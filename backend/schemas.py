@@ -13,6 +13,7 @@ class UserCreate(BaseModel):
     email: Optional[str] = None
     is_admin: bool = False
     work_group: Optional[str] = None
+    checkin_cutoff: Optional[str] = None
 
 
 class UserOut(BaseModel):
@@ -26,6 +27,7 @@ class UserOut(BaseModel):
     is_active: bool
     expected_hours: float = 8.0
     work_group: Optional[str] = None
+    checkin_cutoff: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

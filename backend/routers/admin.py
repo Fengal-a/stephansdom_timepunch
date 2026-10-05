@@ -16,10 +16,16 @@ from ..database import get_db
 from ..models import User, TimeEntry, TimeEntryEdit
 from ..schemas import UserOut, TimeEntryOut, UserCreate, LunchRequest
 from .auth import require_admin, get_current_user
-from .time_entries import WORK_GROUPS
+from .time_entries import WORK_GROUPS, parse_cutoff
 from ..email_utils import send_invite_email
 
 VIENNA_TZ  = ZoneInfo("Europe/Vienna")
+
+
+def _clean_cutoff(value) -> str | None:
+    """Normalise to "HH:MM"; anything unparseable clears the override."""
+    parsed = parse_cutoff(value)
+    return f"{parsed[0]:02d}:{parsed[1]:02d}" if parsed else None
 
 
 def _clean_group(value) -> str | None:
@@ -97,6 +103,7 @@ def create_user(
         password_hash=hashed,
         is_admin=payload.is_admin,
         work_group=_clean_group(payload.work_group),
+        checkin_cutoff=_clean_cutoff(payload.checkin_cutoff),
     )
     db.add(user)
     db.commit()
@@ -194,6 +201,8 @@ def update_user(
         user.is_admin = bool(payload["is_admin"])
     if "work_group" in payload:
         user.work_group = _clean_group(payload["work_group"])
+    if "checkin_cutoff" in payload:
+        user.checkin_cutoff = _clean_cutoff(payload["checkin_cutoff"])
     if "expected_hours" in payload:
         try:
             user.expected_hours = float(payload["expected_hours"])

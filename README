@@ -285,3 +285,30 @@ Same, but for one employee only:
    FROM time_entry_edits l
    WHERE l.user_id = (SELECT id FROM users WHERE username = 'nachname')
    ORDER BY l.edited_at DESC;"
+
+Create a NEW admin account (via the API — handles password hashing, username
+generation and uniqueness checks, which raw SQL does not). Run from anywhere:
+   TOKEN=$(curl -s -X POST https://domstempel.at/auth/login \
+     -d 'username=admin&password=DEIN_PASSWORT' \
+     | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+
+   curl -s -X POST https://domstempel.at/admin/users \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"first_name":"Maria","last_name":"Muster","email":"maria@beispiel.at","is_admin":true}'
+
+   Swap "email" for "password":"mindestens8zeichen" to set a password directly
+   instead of sending an invite. The username is derived from the surname
+   (lowercased, umlauts expanded) unless you pass "username" explicitly.
+
+Create a NEW admin with SQL only (fallback if the API is unreachable — the hash
+must be generated first, inside the backend container):
+   docker compose exec -T backend python -c \
+     "import bcrypt; print(bcrypt.hashpw(b'MINDESTENS8ZEICHEN', bcrypt.gensalt()).decode())"
+
+   Then paste that hash in place of <HASH>:
+   docker compose exec -T db psql -U timepunch -d timepunch -c "
+   INSERT INTO users (name, first_name, last_name, username, password_hash, is_admin)
+   VALUES ('Maria Muster', 'Maria', 'Muster', 'muster', '<HASH>', true);"
+
+   All other columns have defaults (is_active, token_version, expected_hours,
+   failed_login_attempts), so they can be omitted.

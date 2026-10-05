@@ -83,10 +83,18 @@ def _close_stale_entries(db: Session) -> None:
         db.commit()
 
 
-def _past_checkin_cutoff() -> bool:
+def _past_checkin_cutoff(cutoff=CHECKIN_CUTOFF) -> bool:
     now = datetime.now(VIENNA_TZ)
-    cutoff_h, cutoff_m = CHECKIN_CUTOFF
-    return (now.hour, now.minute) > (cutoff_h, cutoff_m)
+    return (now.hour, now.minute) > cutoff
+
+
+def parse_cutoff(value):
+    """"HH:MM" -> (h, m), or None if unset/malformed (which means "no override")."""
+    try:
+        h, m = map(int, (value or "").strip().split(":"))
+    except (ValueError, AttributeError):
+        return None
+    return (h, m) if 0 <= h <= 23 and 0 <= m <= 59 else None
 
 
 # ── Punch in / out ────────────────────────────────────────────────────────────
@@ -117,11 +125,21 @@ def punch(
                     status_code=403,
                     detail="Stempeln nur im Stephansdom-WLAN möglich.",
                 )
-        if not group and is_punch_in and _past_checkin_cutoff():
-            raise HTTPException(
-                status_code=403,
-                detail="Einstempeln nach 09:05 Uhr nicht möglich. Bitte den Administrator kontaktieren.",
-            )
+        if is_punch_in:
+            # A personal cutoff wins over both the group rule and the default.
+            own_cutoff = parse_cutoff(current_user.checkin_cutoff)
+            if own_cutoff:
+                if _past_checkin_cutoff(own_cutoff):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Einstempeln nach {own_cutoff[0]:02d}:{own_cutoff[1]:02d} Uhr nicht möglich. "
+                               "Bitte den Administrator kontaktieren.",
+                    )
+            elif not group and _past_checkin_cutoff():
+                raise HTTPException(
+                    status_code=403,
+                    detail="Einstempeln nach 09:05 Uhr nicht möglich. Bitte den Administrator kontaktieren.",
+                )
 
     now = datetime.now(timezone.utc)
 
