@@ -18,30 +18,42 @@ BUERO_NETWORKS  = os.environ.get("BUERO_NETWORKS", "")
 VIENNA_TZ       = ZoneInfo("Europe/Vienna")
 CHECKIN_CUTOFF  = (9, 5)  # 09:05 Vienna time
 
-_ALL_NETWORKS = ",".join(filter(None, [OFFICE_NETWORKS, BUERO_NETWORKS]))
-
-# Any group may punch at any time; only Homeoffice may punch from outside the
-# networks. Employees with no group keep both restrictions.
-WORK_GROUPS   = ("Domführer", "Aufsicht", "Mesner", "Homeoffice")
+# Any group may punch at any time. Location differs per group:
+#   Homeoffice        — anywhere
+#   Kirchenmeisteramt — Stephansdom WLAN or the Büro network
+#   everyone else     — Stephansdom WLAN only
+WORK_GROUPS   = ("Domführer", "Aufsicht", "Mesner", "Kirchenmeisteramt", "Homeoffice")
 REMOTE_GROUPS = ("Homeoffice",)
+BUERO_GROUPS  = ("Kirchenmeisteramt",)
 
 
-def _is_office_ip(client_ip: str) -> bool:
-    if not _ALL_NETWORKS:
-        return True  # restriction disabled (local dev)
+def _in_networks(client_ip: str, cidrs: str) -> bool:
+    if not cidrs:
+        return False
     try:
         addr = ipaddress.ip_address(client_ip)
         # nginx listens on IPv6, so an IPv4 client can arrive as ::ffff:1.2.3.4,
         # which would never match a configured IPv4 range.
         if getattr(addr, "ipv4_mapped", None):
             addr = addr.ipv4_mapped
-        for cidr in _ALL_NETWORKS.split(","):
+        for cidr in cidrs.split(","):
             net = ipaddress.ip_network(cidr.strip(), strict=False)
             if addr.version == net.version and addr in net:
                 return True
     except ValueError:
         pass
     return False
+
+
+def _may_punch_from(client_ip: str, group: str) -> bool:
+    if not OFFICE_NETWORKS:
+        return True  # restriction disabled (local dev)
+    if group in REMOTE_GROUPS:
+        return True
+    allowed = OFFICE_NETWORKS
+    if group in BUERO_GROUPS and BUERO_NETWORKS:
+        allowed = f"{OFFICE_NETWORKS},{BUERO_NETWORKS}"
+    return _in_networks(client_ip, allowed)
 
 
 MAX_SHIFT_HOURS    = 12
@@ -118,13 +130,14 @@ def punch(
     if not current_user.is_admin:
         group = (current_user.work_group or "").strip()
 
-        if group not in REMOTE_GROUPS:
-            client_ip = request.headers.get("X-Real-IP") or request.client.host
-            if not _is_office_ip(client_ip):
-                raise HTTPException(
-                    status_code=403,
-                    detail="Stempeln nur im Stephansdom-WLAN möglich.",
-                )
+        client_ip = request.headers.get("X-Real-IP") or request.client.host
+        if not _may_punch_from(client_ip, group):
+            raise HTTPException(
+                status_code=403,
+                detail="Stempeln nur im Büro-Netzwerk oder im Stephansdom-WLAN möglich."
+                       if group in BUERO_GROUPS else
+                       "Stempeln nur im Stephansdom-WLAN möglich.",
+            )
         if is_punch_in:
             # A personal cutoff wins over both the group rule and the default.
             own_cutoff = parse_cutoff(current_user.checkin_cutoff)

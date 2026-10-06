@@ -4,12 +4,13 @@ import ShiftCalendar from "./ShiftCalendar";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
-const WORK_GROUPS = ["Domführer", "Aufsicht", "Mesner", "Homeoffice"];
+const WORK_GROUPS = ["Domführer", "Aufsicht", "Mesner", "Kirchenmeisteramt", "Homeoffice"];
 const GROUP_HINTS = {
   "":           "Nur im WLAN und nur bis 09:05 Uhr einstempeln.",
   "Domführer":  "Im WLAN, aber zu jeder Uhrzeit.",
   "Aufsicht":   "Im WLAN, aber zu jeder Uhrzeit.",
   "Mesner":     "Im WLAN, aber zu jeder Uhrzeit.",
+  "Kirchenmeisteramt": "Im WLAN UND im Büro-Netzwerk, zu jeder Uhrzeit.",
   "Homeoffice": "Von überall und zu jeder Uhrzeit.",
 };
 
