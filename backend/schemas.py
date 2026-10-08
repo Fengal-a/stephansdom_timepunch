@@ -46,6 +46,7 @@ class TimeEntryOut(BaseModel):
     lunch_end: Optional[datetime]
     edited_at: Optional[datetime] = None
     edited_by: Optional[str] = None
+    created_by_admin: Optional[bool] = None
 
     model_config = {"from_attributes": True}
 

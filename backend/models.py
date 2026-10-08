@@ -47,6 +47,9 @@ class TimeEntry(Base):
     # record survives that admin later being deleted.
     edited_at   = Column(DateTime(timezone=True), nullable=True)
     edited_by   = Column(String, nullable=True)
+    # True when an admin created the day from scratch ("nachgetragen") rather
+    # than adjusting a real punch — a meaningful distinction for payroll.
+    created_by_admin = Column(Boolean, nullable=True)
 
     user = relationship("User", back_populates="time_entries")
 

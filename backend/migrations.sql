@@ -18,6 +18,7 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS recipient_id INTEGER REFERENCES us
 -- Latest manual correction, shown in the admin UI under the entry.
 ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS edited_by VARCHAR;
+ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS created_by_admin BOOLEAN;
 
 -- Full history of corrections. No foreign key on entry_id on purpose, so the
 -- log survives the time entry (or the admin) being deleted.

@@ -581,6 +581,58 @@ function EditTimesModal({ entry, onClose, onSaved }) {
   );
 }
 
+function AddEntryModal({ user, date, onClose, onSaved }) {
+  const [from,    setFrom]    = useState("09:00");
+  const [till,    setTill]    = useState("17:00");
+  const [error,   setError]   = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSave() {
+    setLoading(true); setError("");
+    try {
+      const res = await fetch(`${API}/admin/entries`, {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({ user_id: user.id, date, punch_in: from, punch_out: till }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.detail); }
+      onSaved();
+    } catch(e) { setError(e.message); }
+    setLoading(false);
+  }
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={e => e.stopPropagation()}>
+        <p style={s.modalTitle}>+ Arbeitstag nachtragen</p>
+        <p style={{ margin: 0, fontSize: "12px", color: MUTED }}>
+          {user.name} — {formatDate(date)}
+        </p>
+        {error && <p style={s.errorBox}>{error}</p>}
+        <div style={{ display: "flex", gap: "12px" }}>
+          <div style={{ ...s.field, flex: 1 }}>
+            <label style={s.label}>Einstempeln</label>
+            <input type="time" style={s.input} value={from} onChange={e => setFrom(e.target.value)} />
+          </div>
+          <div style={{ ...s.field, flex: 1 }}>
+            <label style={s.label}>Ausstempeln</label>
+            <input type="time" style={s.input} value={till} onChange={e => setTill(e.target.value)} />
+          </div>
+        </div>
+        <p style={s.fieldHint}>
+          Wird als "nachgetragen" markiert und im Änderungsprotokoll festgehalten.
+          Leeres Ausstempel-Feld lässt den Eintrag offen.
+        </p>
+        <div style={s.modalBtns}>
+          <button className="btn-ghost-hover" style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
+          <button className="btn-orange-hover" style={s.confirmBtn} onClick={handleSave} disabled={loading}>
+            {loading ? "..." : "Nachtragen"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Admin Compose Modal ───────────────────────────────────────────────────────
 
 function ComposeModal({ users, onClose, onSent }) {
@@ -674,6 +726,7 @@ export default function Admin({ user, onLogout }) {
   const [resetUser,        setResetUser]        = useState(null);
   const [lunchEntry,       setLunchEntry]       = useState(null);
   const [timesEntry,       setTimesEntry]       = useState(null);
+  const [addEntryUser,     setAddEntryUser]     = useState(null);
   // "sv-SE" formats as YYYY-MM-DD, which is what <input type="date"> expects.
   const [entriesDate,      setEntriesDate]      = useState(() => new Date().toLocaleDateString("sv-SE"));
   const [editUser,         setEditUser]         = useState(null);
@@ -811,6 +864,8 @@ export default function Admin({ user, onLogout }) {
   const filteredUsers = users
     .filter(u => !u.is_admin)
     .filter(u => !searchTerm || (u.name ?? "").toLowerCase().split(/\s+/).some(part => part.startsWith(searchTerm)));
+
+  const isToday = entriesDate === new Date().toLocaleDateString("sv-SE");
 
   const msgTerm = msgSearch.trim().toLowerCase();
   const visibleMessages = messages
@@ -1099,7 +1154,9 @@ export default function Admin({ user, onLogout }) {
                         {isExpanded && (
                           <div style={s.entriesBlock}>
                             {uEntries.length === 0 ? (
-                              <p style={s.emptySmall}>Keine Einträge heute</p>
+                              <p style={s.emptySmall}>
+                                {isToday ? "Keine Einträge heute" : `Keine Einträge am ${formatDate(entriesDate)}`}
+                              </p>
                             ) : (
                               uEntries.map(e => (
                                 <div key={e.id} style={s.entryRow}>
@@ -1119,7 +1176,8 @@ export default function Admin({ user, onLogout }) {
                                   {e.note && <p style={s.entryNote}>"{e.note}"</p>}
                                   {e.edited_at && (
                                     <p style={s.entryEdited}>
-                                      ✎ geändert{e.edited_by ? ` von ${e.edited_by}` : ""} am {formatDate(e.edited_at)} {formatTime(e.edited_at)}
+                                      ✎ {e.created_by_admin ? "nachgetragen" : "geändert"}
+                                      {e.edited_by ? ` von ${e.edited_by}` : ""} am {formatDate(e.edited_at)} {formatTime(e.edited_at)}
                                     </p>
                                   )}
                                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -1145,11 +1203,21 @@ export default function Admin({ user, onLogout }) {
                                 </div>
                               ))
                             )}
+                            {/* The live punch always uses "now", so it only makes
+                                sense while today is the selected day. */}
+                            {isToday && (
+                              <button
+                                className="btn-ghost-hover" style={s.manualPunchBtn}
+                                onClick={() => handleAdminPunch(u.id)}
+                              >
+                                {isActive ? "⏹ Manuell ausstempeln" : "▶ Manuell einstempeln"}
+                              </button>
+                            )}
                             <button
                               className="btn-ghost-hover" style={s.manualPunchBtn}
-                              onClick={() => handleAdminPunch(u.id)}
+                              onClick={() => setAddEntryUser(u)}
                             >
-                              {isActive ? "⏹ Manuell ausstempeln" : "▶ Manuell einstempeln"}
+                              + Nachtragen
                             </button>
                           </div>
                         )}
@@ -1218,6 +1286,14 @@ export default function Admin({ user, onLogout }) {
           entry={timesEntry}
           onClose={() => setTimesEntry(null)}
           onSaved={() => { setTimesEntry(null); fetchAll(); }}
+        />
+      )}
+      {addEntryUser && (
+        <AddEntryModal
+          user={addEntryUser}
+          date={entriesDate}
+          onClose={() => setAddEntryUser(null)}
+          onSaved={() => { setAddEntryUser(null); fetchAll(); }}
         />
       )}
       {editUser && (

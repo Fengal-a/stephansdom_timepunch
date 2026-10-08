@@ -307,6 +307,70 @@ def set_lunch_for_entry(
     return {"ok": True}
 
 
+@router.post("/entries", response_model=TimeEntryOut)
+def create_entry(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin),
+):
+    """Record a day an employee forgot to punch ("nachtragen"). Times are Vienna
+    wall-clock on the given date."""
+    user = db.query(User).filter(User.id == payload.get("user_id")).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Mitarbeiter nicht gefunden")
+    try:
+        day = date.fromisoformat(payload["date"])
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(status_code=422, detail="Ungültiges Datum (YYYY-MM-DD erwartet)")
+
+    def parse(value: str) -> datetime:
+        h, m = map(int, value.split(":"))
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            raise ValueError
+        return datetime(day.year, day.month, day.day, h, m, tzinfo=VIENNA_TZ).astimezone(timezone.utc)
+
+    try:
+        new_in  = parse(payload["punch_in"])
+        raw_out = payload.get("punch_out") or ""
+        new_out = parse(raw_out) if raw_out.strip() else None
+    except (ValueError, KeyError, AttributeError):
+        raise HTTPException(status_code=422, detail="Ungültiges Zeitformat (HH:MM erwartet)")
+
+    if new_out and new_out <= new_in:
+        raise HTTPException(status_code=422, detail="Ausstempelzeit muss nach der Einstempelzeit liegen")
+
+    # Two open entries would confuse the punch toggle, which picks "the" open one.
+    if new_out is None and db.query(TimeEntry).filter(
+        TimeEntry.user_id == user.id, TimeEntry.punch_out.is_(None)
+    ).first():
+        raise HTTPException(status_code=409, detail="Dieser Mitarbeiter ist bereits eingestempelt")
+
+    entry = TimeEntry(
+        user_id=user.id,
+        punch_in=new_in,
+        punch_out=new_out,
+        duration_minutes=int((new_out - new_in).total_seconds() / 60) if new_out else None,
+        created_by_admin=True,
+        edited_at=datetime.now(timezone.utc),
+        edited_by=current_admin.name,
+    )
+    db.add(entry)
+    db.flush()  # need entry.id for the audit row
+
+    db.add(TimeEntryEdit(
+        entry_id=entry.id,
+        user_id=user.id,
+        edited_by=current_admin.name,
+        old_punch_in=None,      # no previous values: this day was created, not changed
+        old_punch_out=None,
+        new_punch_in=new_in,
+        new_punch_out=new_out,
+    ))
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
 @router.patch("/entries/{entry_id}", response_model=TimeEntryOut)
 def update_entry_times(
     entry_id: int,
