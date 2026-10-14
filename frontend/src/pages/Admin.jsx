@@ -848,7 +848,9 @@ export default function Admin({ user, onLogout }) {
     if (touchStartX.current === null) return;
     const diff = e.changedTouches[0].clientX - touchStartX.current;
     touchStartX.current = null;
-    if (diff < -60 && page === "admin") setPage("dienstplan");
+    // Opening the Dienstplan by swipe is disabled: it was too easy to
+    // trigger while scrolling. The header button still opens it, and
+    // swiping back out (below) still works.
     if (diff > 60  && page === "dienstplan") setPage("admin");
   }
 
