@@ -312,3 +312,21 @@ must be generated first, inside the backend container):
 
    All other columns have defaults (is_active, token_version, expected_hours,
    failed_login_attempts), so they can be omitted.
+
+Limit an admin to one group ("Domführer", "Aufsicht", "Mesner",
+"Kirchenmeisteramt", "Homeoffice"). They then only see and manage employees in
+that group — lists, entries, exports, inbox and Rundnachrichten are all filtered,
+and they cannot create admins or change anyone's admin rights:
+   docker compose exec -T db psql -U timepunch -d timepunch -c \
+     "UPDATE users SET admin_scope = 'Domführer' WHERE username = 'nachname';"
+
+Give an admin full access again:
+   docker compose exec -T db psql -U timepunch -d timepunch -c \
+     "UPDATE users SET admin_scope = NULL WHERE username = 'nachname';"
+
+Show all admins and their scope:
+   docker compose exec -T db psql -U timepunch -d timepunch -c \
+     "SELECT name, username, COALESCE(admin_scope,'(alle Gruppen)') AS bereich FROM users WHERE is_admin = true ORDER BY name;"
+
+   NOTE: the Dienstplan is deliberately NOT scoped — every admin sees and edits
+   the shared roster, since it covers all roles at once.

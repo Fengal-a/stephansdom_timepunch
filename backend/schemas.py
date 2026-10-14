@@ -28,6 +28,7 @@ class UserOut(BaseModel):
     expected_hours: float = 8.0
     work_group: Optional[str] = None
     checkin_cutoff: Optional[str] = None
+    admin_scope: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

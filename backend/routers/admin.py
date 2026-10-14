@@ -13,13 +13,32 @@ import csv
 import io
 
 from ..database import get_db
-from ..models import User, TimeEntry, TimeEntryEdit
+from ..models import User, TimeEntry, TimeEntryEdit, Message
 from ..schemas import UserOut, TimeEntryOut, UserCreate, LunchRequest
 from .auth import require_admin, get_current_user
 from .time_entries import WORK_GROUPS, parse_cutoff
 from ..email_utils import send_invite_email
 
 VIENNA_TZ  = ZoneInfo("Europe/Vienna")
+
+
+def _scoped(query, admin: User):
+    """Restrict a User query to the admin's group, if they have one."""
+    return query.filter(User.work_group == admin.admin_scope) if admin.admin_scope else query
+
+
+def _require_scope(admin: User, user: User) -> None:
+    """Reject acting on an employee outside the admin's group."""
+    if admin.admin_scope and user.work_group != admin.admin_scope:
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf diesen Mitarbeiter")
+
+
+def _require_entry_scope(admin: User, db: Session, entry: TimeEntry) -> None:
+    if not admin.admin_scope:
+        return
+    owner = db.query(User).filter(User.id == entry.user_id).first()
+    if not owner or owner.work_group != admin.admin_scope:
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf diesen Eintrag")
 
 
 def _clean_cutoff(value) -> str | None:
@@ -61,16 +80,20 @@ def _unique_username(db: Session, base: str) -> str:
 @router.get("/users", response_model=List[UserOut])
 def list_all_users(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
-    return db.query(User).order_by(User.last_name, User.first_name).all()
+    return (
+        _scoped(db.query(User), current_admin)
+        .order_by(User.last_name, User.first_name)
+        .all()
+    )
 
 
 @router.post("/users", response_model=UserOut)
 def create_user(
     payload: UserCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
     if not payload.first_name.strip() or not payload.last_name.strip():
         raise HTTPException(status_code=400, detail="Vor- und Nachname sind erforderlich")
@@ -91,6 +114,13 @@ def create_user(
     if payload.email:
         if db.query(User).filter(User.email == payload.email.lower()).first():
             raise HTTPException(status_code=409, detail="E-Mail-Adresse bereits vergeben")
+
+    if current_admin.admin_scope:
+        # A scoped admin may only create employees inside their own group,
+        # and may not create further admins.
+        if payload.is_admin:
+            raise HTTPException(status_code=403, detail="Keine Berechtigung, Admins anzulegen")
+        payload.work_group = current_admin.admin_scope
 
     raw_pw = payload.password or secrets.token_urlsafe(16)
     hashed = bcrypt.hashpw(raw_pw.encode(), bcrypt.gensalt()).decode()
@@ -126,11 +156,12 @@ def create_user(
 def resend_invite(
     user_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Mitarbeiter nicht gefunden")
+    _require_scope(current_admin, user)
     if not user.email:
         raise HTTPException(status_code=400, detail="Keine E-Mail-Adresse hinterlegt")
 
@@ -153,15 +184,26 @@ def reset_user_password(
     user_id: int,
     payload: dict,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _require_scope(current_admin, user)
     new_password = payload.get("password", "").strip()
     if len(new_password) < 8:
         raise HTTPException(status_code=400, detail="Passwort muss mindestens 8 Zeichen haben")
     user.password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+
+    # An admin who sets a password knows it and could sign in as this person,
+    # which leaves no trace. Telling the employee makes that detectable.
+    when = datetime.now(VIENNA_TZ).strftime("%d.%m.%Y um %H:%M")
+    db.add(Message(
+        sender_id=current_admin.id,
+        recipient_id=user.id,
+        body=(f"Ihr Passwort wurde am {when} Uhr von {current_admin.name} neu gesetzt. "
+              "Falls Sie darum nicht gebeten haben, melden Sie sich bitte umgehend."),
+    ))
     db.commit()
     return {"ok": True}
 
@@ -171,11 +213,12 @@ def update_user(
     user_id: int,
     payload: dict,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _require_scope(current_admin, user)
     if "first_name" in payload or "last_name" in payload:
         if "first_name" in payload:
             user.first_name = payload["first_name"].strip()
@@ -197,8 +240,10 @@ def update_user(
             if conflict:
                 raise HTTPException(status_code=409, detail="E-Mail-Adresse bereits vergeben")
         user.email = new_email
-    if "is_admin" in payload:
+    if "is_admin" in payload and not current_admin.admin_scope:
         user.is_admin = bool(payload["is_admin"])
+    if "admin_scope" in payload and not current_admin.admin_scope:
+        user.admin_scope = (payload["admin_scope"] or "").strip() or None
     if "work_group" in payload:
         user.work_group = _clean_group(payload["work_group"])
     if "checkin_cutoff" in payload:
@@ -224,6 +269,7 @@ def delete_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _require_scope(current_admin, user)
     db.query(TimeEntry).filter(TimeEntry.user_id == user_id).delete()
     db.delete(user)
     db.commit()
@@ -236,7 +282,7 @@ def delete_user(
 def get_todays_entries(
     date_str: Optional[str] = Query(None, alias="date"),
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
     """Entries for one Vienna calendar day; defaults to today when no date given."""
     if date_str:
@@ -249,9 +295,13 @@ def get_todays_entries(
 
     start = datetime(day.year, day.month, day.day, tzinfo=VIENNA_TZ)
     end   = start + timedelta(days=1)
+    q = db.query(TimeEntry).filter(TimeEntry.punch_in >= start, TimeEntry.punch_in < end)
+    if current_admin.admin_scope:
+        q = q.filter(TimeEntry.user_id.in_(
+            [u.id for u in _scoped(db.query(User), current_admin).all()]
+        ))
     return (
-        db.query(TimeEntry)
-        .filter(TimeEntry.punch_in >= start, TimeEntry.punch_in < end)
+        q
         .order_by(TimeEntry.punch_in.desc())
         .all()
     )
@@ -260,7 +310,7 @@ def get_todays_entries(
 @router.get("/entries/active")
 def get_active_entries(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
     """Returns open entries (punch_out IS NULL) with user info."""
     entries = (
@@ -271,6 +321,8 @@ def get_active_entries(
     result = []
     for e in entries:
         user = db.query(User).filter(User.id == e.user_id).first()
+        if current_admin.admin_scope and (not user or user.work_group != current_admin.admin_scope):
+            continue
         result.append({
             "entry_id": e.id,
             "user_id": e.user_id,
@@ -285,11 +337,12 @@ def set_lunch_for_entry(
     entry_id: int,
     payload: LunchRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
     entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+    _require_entry_scope(current_admin, db, entry)
     date = entry.punch_in.astimezone(VIENNA_TZ).date()
     try:
         h_s, m_s = map(int, payload.lunch_start.split(":"))
@@ -318,6 +371,7 @@ def create_entry(
     user = db.query(User).filter(User.id == payload.get("user_id")).first()
     if not user:
         raise HTTPException(status_code=404, detail="Mitarbeiter nicht gefunden")
+    _require_scope(current_admin, user)
     try:
         day = date.fromisoformat(payload["date"])
     except (ValueError, KeyError, TypeError):
@@ -383,6 +437,7 @@ def update_entry_times(
     entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
+    _require_entry_scope(current_admin, db, entry)
 
     def parse(value: str) -> datetime:
         h, m = map(int, value.split(":"))
@@ -428,11 +483,12 @@ def update_entry_times(
 def delete_entry(
     entry_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
     entry = db.query(TimeEntry).filter(TimeEntry.id == entry_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+    _require_entry_scope(current_admin, db, entry)
     db.delete(entry)
     db.commit()
     return {"ok": True}
@@ -444,12 +500,13 @@ def delete_entry(
 def admin_punch(
     user_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
     """Same toggle logic as user punch, but callable by admin for any user."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _require_scope(current_admin, user)
 
     open_entry = (
         db.query(TimeEntry)
@@ -481,11 +538,12 @@ def export_monthly(
     year:    int = Query(...),
     month:   int = Query(...),
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _require_scope(current_admin, user)
 
     # Build UTC window for the requested month
     start = datetime(year, month, 1, tzinfo=timezone.utc)

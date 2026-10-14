@@ -735,6 +735,8 @@ export default function Admin({ user, onLogout }) {
   const [inboxOpen,        setInboxOpen]        = useState(true);
   const [msgFilter,        setMsgFilter]        = useState("all");
   const [msgSearch,        setMsgSearch]        = useState("");
+  const [activeSearch,     setActiveSearch]     = useState("");
+  const [entriesSearch,    setEntriesSearch]    = useState("");
   const [loadError,        setLoadError]        = useState("");
   const [activeOpen,       setActiveOpen]       = useState(true);
   const [loading,       setLoading]       = useState(true);
@@ -866,6 +868,17 @@ export default function Admin({ user, onLogout }) {
     .filter(u => !searchTerm || (u.name ?? "").toLowerCase().split(/\s+/).some(part => part.startsWith(searchTerm)));
 
   const isToday = entriesDate === new Date().toLocaleDateString("sv-SE");
+
+  // Same rule as the Mitarbeiter filter: "F" matches Franz Aigner and Elias Fritz.
+  const nameMatches = (name, term) =>
+    !term || (name ?? "").toLowerCase().split(/\s+/).some(part => part.startsWith(term));
+
+  const activeTerm      = activeSearch.trim().toLowerCase();
+  const visibleActive   = activeEntries.filter(ae => nameMatches(ae.user_name, activeTerm));
+  const entriesTerm     = entriesSearch.trim().toLowerCase();
+  const visibleEmployees = users
+    .filter(u => !u.is_admin)
+    .filter(u => nameMatches(u.name, entriesTerm));
 
   const msgTerm = msgSearch.trim().toLowerCase();
   const visibleMessages = messages
@@ -1061,14 +1074,26 @@ export default function Admin({ user, onLogout }) {
               <section style={s.section}>
                 <div style={{ ...s.sectionHeader, cursor: "pointer" }} onClick={() => setActiveOpen(o => !o)}>
                   <p style={s.sectionTitle}>AKTIV JETZT</p>
-                  <span style={s.badge}>{activeEntries.length}</span>
+                  <span style={s.badge}>{visibleActive.length}</span>
                   <span style={s.collapseChevron}>{activeOpen ? "▲" : "▼"}</span>
                 </div>
-                {!activeOpen ? null : activeEntries.length === 0 ? (
-                  <p style={s.empty}>Niemand eingestempelt</p>
+                {activeOpen && activeEntries.length > 0 && (
+                  <div style={s.inboxTools}>
+                    <span style={s.searchLabel}>Suchen</span>
+                    <input
+                      style={{ ...s.searchInput, marginLeft: "auto" }} type="text"
+                      value={activeSearch} onChange={e => setActiveSearch(e.target.value)}
+                      placeholder="Name"
+                    />
+                  </div>
+                )}
+                {!activeOpen ? null : visibleActive.length === 0 ? (
+                  <p style={s.empty}>
+                    {activeEntries.length === 0 ? "Niemand eingestempelt" : `Kein Treffer für "${activeSearch.trim()}"`}
+                  </p>
                 ) : (
                   <div style={s.activeList}>
-                    {activeEntries.map(ae => (
+                    {visibleActive.map(ae => (
                       <div key={ae.entry_id} style={s.activeRow}>
                         <div style={s.activeLeft}>
                           <span style={s.activeDot} />
@@ -1120,12 +1145,22 @@ export default function Admin({ user, onLogout }) {
 
               {/* ── Users & entries table ── */}
               <section style={s.section}>
+                <div style={s.inboxTools}>
+                  <span style={s.searchLabel}>Suchen</span>
+                  <input
+                    style={{ ...s.searchInput, marginLeft: "auto" }} type="text"
+                    value={entriesSearch} onChange={e => setEntriesSearch(e.target.value)}
+                    placeholder="Name"
+                  />
+                </div>
                 {loading ? (
                   <p style={s.empty}>Laden...</p>
-                ) : users.filter(u => !u.is_admin).length === 0 ? (
-                  <p style={s.empty}>Keine Mitarbeiter vorhanden</p>
+                ) : visibleEmployees.length === 0 ? (
+                  <p style={s.empty}>
+                    {entriesTerm ? `Kein Treffer für "${entriesSearch.trim()}"` : "Keine Mitarbeiter vorhanden"}
+                  </p>
                 ) : (
-                  users.filter(u => !u.is_admin).map(u => {
+                  visibleEmployees.map(u => {
                     const uEntries = entriesByUser[u.id] ?? [];
                     const isExpanded = expandedUser === u.id;
                     const isActive = activeUserIds.has(u.id);
@@ -1543,20 +1578,23 @@ const s = {
     position: "fixed", inset: 0, zIndex: 50,
     background: "rgba(0,0,0,0.75)",
     display: "flex", alignItems: "center", justifyContent: "center",
-    padding: "24px",
+    padding: "16px",
   },
   modal: {
     background: "#1a1a1a", border: `1px solid ${BORDER}`,
     borderTop: `3px solid ${ORANGE}`, borderRadius: "6px",
-    padding: "28px 24px", width: "100%", maxWidth: "380px",
-    display: "flex", flexDirection: "column", gap: "14px",
+    padding: "20px", width: "100%", maxWidth: "380px",
+    display: "flex", flexDirection: "column", gap: "11px",
+    // Without these a tall form overflows the viewport with nothing to scroll:
+    // the overlay is position:fixed, so the page behind it cannot scroll either.
+    maxHeight: "calc(100dvh - 32px)", overflowY: "auto",
   },
-  modalTitle: { margin: 0, fontSize: "18px", fontWeight: "700", color: TEXT, fontFamily: "'DM Sans', sans-serif" },
-  field:      { display: "flex", flexDirection: "column", gap: "6px" },
+  modalTitle: { margin: 0, fontSize: "15px", fontWeight: "700", color: TEXT, fontFamily: "'DM Sans', sans-serif" },
+  field:      { display: "flex", flexDirection: "column", gap: "4px" },
   label:      { fontSize: "10px", color: MUTED, letterSpacing: "0.12em", textTransform: "uppercase" },
   input: {
     background: BLACK, border: `1px solid ${BORDER}`, borderRadius: "3px",
-    padding: "11px 12px", fontSize: "14px", color: TEXT,
+    padding: "9px 11px", fontSize: "14px", color: TEXT,
     fontFamily: "inherit", outline: "none",
   },
   fieldHint:  { margin: "4px 0 0", fontSize: "10px", color: MUTED, letterSpacing: "0.04em" },

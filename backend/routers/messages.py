@@ -45,11 +45,15 @@ def send_message(
 @router.get("", response_model=List[MessageOut])
 def list_messages(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_admin: User = Depends(require_admin),
 ):
+    q = db.query(Message).filter(Message.recipient_id.is_(None))
+    if current_admin.admin_scope:
+        q = q.filter(Message.sender_id.in_(
+            [u.id for u in db.query(User).filter(User.work_group == current_admin.admin_scope).all()]
+        ))
     msgs = (
-        db.query(Message)
-        .filter(Message.recipient_id.is_(None))
+        q
         .order_by(Message.sent_at.desc())
         .all()
     )
@@ -66,10 +70,14 @@ def admin_send_message(
 ):
     if not payload.body.strip():
         raise HTTPException(status_code=400, detail="Nachricht darf nicht leer sein")
+    q = db.query(User)
     if payload.recipient_ids:
-        recipients = db.query(User).filter(User.id.in_(payload.recipient_ids)).all()
+        q = q.filter(User.id.in_(payload.recipient_ids))
     else:
-        recipients = db.query(User).filter(User.is_admin == False, User.is_active == True).all()
+        q = q.filter(User.is_admin == False, User.is_active == True)
+    if admin.admin_scope:
+        q = q.filter(User.work_group == admin.admin_scope)
+    recipients = q.all()
     for r in recipients:
         db.add(Message(sender_id=admin.id, recipient_id=r.id, body=payload.body.strip()))
     db.commit()

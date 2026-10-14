@@ -28,6 +28,8 @@ class User(Base):
     work_group             = Column(String, nullable=True)  # "group" is reserved in SQL
     # "HH:MM" Vienna time. Overrides both the 09:05 default and the group rule.
     checkin_cutoff         = Column(String, nullable=True)
+    # For admins only: limits them to one work_group. NULL = sees everyone.
+    admin_scope            = Column(String, nullable=True)
 
     time_entries = relationship("TimeEntry", back_populates="user")
 
