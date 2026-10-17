@@ -16,7 +16,6 @@ router = APIRouter(prefix="/users", tags=["users"])
 OFFICE_NETWORKS = os.environ.get("OFFICE_NETWORKS", "")
 BUERO_NETWORKS  = os.environ.get("BUERO_NETWORKS", "")
 VIENNA_TZ       = ZoneInfo("Europe/Vienna")
-CHECKIN_CUTOFF  = (9, 5)  # 09:05 Vienna time
 
 # Any group may punch at any time. Location differs per group:
 #   Homeoffice        — anywhere
@@ -95,7 +94,7 @@ def _close_stale_entries(db: Session) -> None:
         db.commit()
 
 
-def _past_checkin_cutoff(cutoff=CHECKIN_CUTOFF) -> bool:
+def _past_checkin_cutoff(cutoff) -> bool:
     now = datetime.now(VIENNA_TZ)
     return (now.hour, now.minute) > cutoff
 
@@ -138,20 +137,15 @@ def punch(
                        if group in BUERO_GROUPS else
                        "Stempeln nur im Stephansdom-WLAN möglich.",
             )
+        # There is no general check-in deadline any more — everyone may punch in
+        # at any hour. A per-person limit still applies if an admin sets one.
         if is_punch_in:
-            # A personal cutoff wins over both the group rule and the default.
             own_cutoff = parse_cutoff(current_user.checkin_cutoff)
-            if own_cutoff:
-                if _past_checkin_cutoff(own_cutoff):
-                    raise HTTPException(
-                        status_code=403,
-                        detail=f"Einstempeln nach {own_cutoff[0]:02d}:{own_cutoff[1]:02d} Uhr nicht möglich. "
-                               "Bitte den Administrator kontaktieren.",
-                    )
-            elif not group and _past_checkin_cutoff():
+            if own_cutoff and _past_checkin_cutoff(own_cutoff):
                 raise HTTPException(
                     status_code=403,
-                    detail="Einstempeln nach 09:05 Uhr nicht möglich. Bitte den Administrator kontaktieren.",
+                    detail=f"Einstempeln nach {own_cutoff[0]:02d}:{own_cutoff[1]:02d} Uhr nicht möglich. "
+                           "Bitte den Administrator kontaktieren.",
                 )
 
     now = datetime.now(timezone.utc)

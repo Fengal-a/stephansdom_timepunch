@@ -5,18 +5,21 @@ import ShiftCalendar from "./ShiftCalendar";
 const API = import.meta.env.VITE_API_URL ?? "";
 
 const WORK_GROUPS = ["Domführer", "Aufsicht", "Mesner", "Kirchenmeisteramt", "Homeoffice"];
+// Groups only control WHERE someone may punch; there is no general time limit.
+// Domführer, Aufsicht and Mesner behave the same as no group for punching —
+// they still matter for grouping and for group-limited admins.
 const GROUP_HINTS = {
-  "":           "Nur im WLAN und nur bis 09:05 Uhr einstempeln.",
-  "Domführer":  "Im WLAN, aber zu jeder Uhrzeit.",
-  "Aufsicht":   "Im WLAN, aber zu jeder Uhrzeit.",
-  "Mesner":     "Im WLAN, aber zu jeder Uhrzeit.",
-  "Kirchenmeisteramt": "Im WLAN UND im Büro-Netzwerk, zu jeder Uhrzeit.",
-  "Homeoffice": "Von überall und zu jeder Uhrzeit.",
+  "":           "Stempeln nur im Stephansdom-WLAN.",
+  "Domführer":  "Stempeln nur im Stephansdom-WLAN.",
+  "Aufsicht":   "Stempeln nur im Stephansdom-WLAN.",
+  "Mesner":     "Stempeln nur im Stephansdom-WLAN.",
+  "Kirchenmeisteramt": "Stempeln im Stephansdom-WLAN und im Büro-Netzwerk.",
+  "Homeoffice": "Stempeln von überall.",
 };
 
-function cutoffHint(cutoff, group) {
+function cutoffHint(cutoff) {
   if (cutoff) return `Einstempeln nur bis ${cutoff} Uhr — gilt vor der Gruppenregel.`;
-  return group ? "Keine Zeitgrenze (Gruppenregel)." : "Standard: Einstempeln bis 09:05 Uhr.";
+  return "Keine Zeitgrenze — Einstempeln jederzeit möglich.";
 }
 
 function GroupFields({ form, setForm }) {
@@ -37,7 +40,7 @@ function GroupFields({ form, setForm }) {
           type="time" style={s.input} value={form.checkin_cutoff}
           onChange={e => setForm(p => ({ ...p, checkin_cutoff: e.target.value }))}
         />
-        <p style={s.fieldHint}>{cutoffHint(form.checkin_cutoff, form.work_group)}</p>
+        <p style={s.fieldHint}>{cutoffHint(form.checkin_cutoff)}</p>
       </div>
     </>
   );
