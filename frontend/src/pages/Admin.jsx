@@ -900,7 +900,6 @@ export default function Admin({ user, onLogout }) {
                   style={{ ...s.logoutBtn, ...(subPage === "mitarbeiter" ? s.logoutBtnActive : {}) }}
                   onClick={() => setSubPage(subPage === "mitarbeiter" ? "overview" : "mitarbeiter")}
                 >Mitarbeiter</button>
-                <button className="btn-ghost-hover" style={s.logoutBtn} onClick={() => setPage("dienstplan")}>Dienstplan</button>
                 <button className="btn-ghost-hover" style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
               </div>
             </header>

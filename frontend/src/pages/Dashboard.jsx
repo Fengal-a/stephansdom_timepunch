@@ -31,6 +31,9 @@ export default function Dashboard({ user, onLogout }) {
   const [entries, setEntries]     = useState([]);
   const [loading, setLoading]     = useState(true);
   const [adminMsgs, setAdminMsgs]     = useState([]);
+  // Unread admin messages are shown once as a modal on load; dismissing marks
+  // them read, so each message pops exactly one time.
+  const [announce,  setAnnounce]      = useState([]);
   const [confirmDeleteMsg, setConfirmDeleteMsg] = useState(null); // message id to delete
 
   // Note modal
@@ -103,7 +106,7 @@ export default function Dashboard({ user, onLogout }) {
   useEffect(() => {
     fetchStatus();
     fetchEntries();
-    if (!user.is_admin) fetchInbox();
+    if (!user.is_admin) fetchInbox({ popUnread: true });
   }, []);
 
 
@@ -123,11 +126,26 @@ export default function Dashboard({ user, onLogout }) {
     setLoading(false);
   }
 
-  async function fetchInbox() {
+  async function fetchInbox({ popUnread = false } = {}) {
     try {
       const res = await fetch(`${API}/messages/mine`, { headers: authHeaders() });
-      if (res.ok) setAdminMsgs(await res.json());
+      if (!res.ok) return;
+      const msgs = await res.json();
+      setAdminMsgs(msgs);
+      if (popUnread) {
+        const unread = msgs.filter(m => !m.is_read);
+        if (unread.length) setAnnounce(unread);
+      }
     } catch {}
+  }
+
+  async function dismissAnnounce() {
+    const ids = announce.map(m => m.id);
+    setAnnounce([]);
+    await Promise.all(ids.map(id =>
+      fetch(`${API}/messages/mine/${id}/read`, { method: "PATCH", headers: authHeaders() }).catch(() => {})
+    ));
+    fetchInbox();
   }
 
   async function markMsgRead(id) {
@@ -440,6 +458,34 @@ export default function Dashboard({ user, onLogout }) {
             </button>
             <button className="btn-ghost-hover" style={s.cancelBtn} onClick={() => setShowLunch(false)}>
               Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Announcement must also live outside the transformed slideTrack:
+          a transform makes an ancestor the containing block for
+          position:fixed, which pushed the dialog off to the right. */}
+      {announce.length > 0 && (
+        <div style={s.announceOverlay}>
+          <div style={s.announceBox}>
+            <p style={s.announceTitle}>
+              {announce.length > 1 ? `${announce.length} neue Nachrichten` : "Neue Nachricht"}
+            </p>
+            <p style={s.announceSub}>vom Administrator</p>
+            {announce.map(m => (
+              <div key={m.id} style={{ ...s.inboxMsg, marginTop: "10px" }}>
+                <span style={s.inboxDate}>
+                  {new Date(m.sent_at).toLocaleString("de-AT", {
+                    day: "2-digit", month: "2-digit", year: "numeric",
+                    hour: "2-digit", minute: "2-digit",
+                  })}
+                </span>
+                <span style={s.announceBody}>{m.body}</span>
+              </div>
+            ))}
+            <button className="btn-orange-hover" style={s.announceBtn} onClick={dismissAnnounce}>
+              VERSTANDEN
             </button>
           </div>
         </div>
@@ -824,6 +870,34 @@ const s = {
     display: "flex", alignItems: "center", gap: "6px",
   },
   inboxBody: { fontSize: "13px", color: TEXT, lineHeight: "1.5" },
+  // The announcement is a centred dialog, not a bottom sheet — reusing s.sheet
+  // dragged in its full-width and safe-area padding and looked oversized.
+  announceOverlay: {
+    position: "fixed", inset: 0, zIndex: 60,
+    background: "rgba(0,0,0,0.78)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    padding: "16px",
+  },
+  announceBox: {
+    width: "100%", maxWidth: "330px",
+    background: "#1a1a1a", border: `1px solid ${BORDER}`,
+    borderTop: `3px solid ${ORANGE}`, borderRadius: "8px",
+    padding: "16px",
+    display: "flex", flexDirection: "column", gap: "8px",
+    maxHeight: "78dvh", overflowY: "auto",
+  },
+  announceTitle: {
+    margin: 0, fontSize: "15px", fontWeight: "700", color: TEXT,
+    fontFamily: "'DM Sans', sans-serif",
+  },
+  announceSub:  { margin: "0 0 2px", fontSize: "11px", color: MUTED },
+  announceBody: { fontSize: "13px", color: TEXT, lineHeight: "1.45" },
+  announceBtn: {
+    marginTop: "4px", background: ORANGE, border: "none", borderRadius: "5px",
+    padding: "0 14px", minHeight: "44px", fontSize: "12px", fontWeight: "700",
+    letterSpacing: "0.1em", color: "#fff", cursor: "pointer",
+    fontFamily: "inherit", touchAction: "manipulation",
+  },
   unreadDot: {
     display: "inline-block", width: "7px", height: "7px",
     borderRadius: "50%", background: ORANGE, flexShrink: 0,
