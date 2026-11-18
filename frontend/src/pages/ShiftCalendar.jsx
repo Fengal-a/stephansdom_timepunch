@@ -389,7 +389,7 @@ const SURFACE = "#161616";
 const BORDER  = "#2A2A2A";
 const ORANGE  = "#2D7A4F";
 const TEXT    = "#EDEDED";
-const MUTED   = "#6B6B6B";
+const MUTED   = "#9A9A9A";
 
 const s = {
   root: { display: "flex", flexDirection: "column" },

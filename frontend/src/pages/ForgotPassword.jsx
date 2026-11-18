@@ -78,7 +78,7 @@ const BLACK   = "#0D0D0D";
 const SURFACE = "#161616";
 const BORDER  = "#2A2A2A";
 const TEXT    = "#EDEDED";
-const MUTED   = "#6B6B6B";
+const MUTED   = "#9A9A9A";
 
 const s = {
   root: {

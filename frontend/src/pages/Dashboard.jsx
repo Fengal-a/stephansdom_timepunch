@@ -240,7 +240,6 @@ export default function Dashboard({ user, onLogout }) {
               <img src="/cathedral.png" alt="Stephansdom" style={s.logo} />
               <div style={s.headerRight}>
                 <span style={s.userName}>{user.name}</span>
-                <button className="btn-ghost-hover" style={s.logoutBtn} onClick={() => setPage("dienstplan")}>Dienstplan</button>
                 <button className="btn-ghost-hover" style={s.logoutBtn} onClick={onLogout}>Abmelden</button>
               </div>
             </header>
@@ -521,7 +520,7 @@ const SURFACE = "#161616";
 const BORDER  = "#2A2A2A";
 const ORANGE  = "#2D7A4F";
 const TEXT    = "#EDEDED";
-const MUTED   = "#6B6B6B";
+const MUTED   = "#9A9A9A";
 const GREEN   = "#22c55e";
 
 const s = {
@@ -718,13 +717,29 @@ const s = {
     margin: 0, fontSize: "11px", color: MUTED, letterSpacing: "0.14em",
     textTransform: "uppercase",
   },
-  windowForm: { display: "flex", alignItems: "flex-end", gap: "8px", flexWrap: "wrap" },
-  windowField: { display: "flex", flexDirection: "column", gap: "4px", flex: "1 1 92px" },
-  windowLabel: { fontSize: "10px", color: MUTED, letterSpacing: "0.12em", textTransform: "uppercase" },
+  // Stacked and centred: a native time input has an intrinsic minimum width
+  // (HH:MM plus the clock icon), so side by side they overflowed on a phone.
+  // The form spans the card and centres its own children, so nothing relies on
+  // auto margins in a flex column — that is what kept coming out off-centre.
+  windowForm: {
+    display: "flex", flexDirection: "column", gap: "8px", alignItems: "center",
+  },
+  // Row spans the card; the three columns are "1fr auto 1fr", so the input sits
+  // dead-centre in the frame regardless of how wide the label is, while the
+  // label stays pinned left — flush with the section title above it.
+  windowField: {
+    display: "grid", gridTemplateColumns: "1fr auto 1fr",
+    alignItems: "center", width: "100%",
+  },
+  windowLabel: {
+    fontSize: "12px", color: MUTED, letterSpacing: "0.06em",
+    justifySelf: "start",
+  },
   windowInput: {
     background: BLACK, border: `1px solid ${BORDER}`, borderRadius: "3px",
     padding: "11px 10px", fontSize: "16px", color: TEXT,
-    fontFamily: "inherit", outline: "none", colorScheme: "dark", width: "100%",
+    fontFamily: "inherit", outline: "none", colorScheme: "dark",
+    width: "150px", minWidth: 0, textAlign: "center",
   },
   windowNote: {
     background: BLACK, border: `1px solid ${BORDER}`, borderRadius: "3px",
@@ -735,12 +750,12 @@ const s = {
     background: ORANGE, border: "none", borderRadius: "3px",
     padding: "12px 16px", fontSize: "12px", fontWeight: "700", color: "#fff",
     cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.08em",
-    flex: "1 1 110px", minHeight: "44px",
+    width: "150px", maxWidth: "100%", minHeight: "44px", marginTop: "4px",
   },
   windowCancelBtn: {
     background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
     padding: "12px 14px", fontSize: "12px", color: MUTED, cursor: "pointer",
-    fontFamily: "inherit", minHeight: "44px",
+    fontFamily: "inherit", minHeight: "44px", width: "150px", maxWidth: "100%",
   },
   windowEmpty: { margin: 0, fontSize: "12px", color: MUTED, textAlign: "center", padding: "6px 0" },
   windowList: { display: "flex", flexDirection: "column", gap: "6px" },
