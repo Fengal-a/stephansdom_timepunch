@@ -11,6 +11,18 @@ import re
 import shutil
 import csv
 import io
+import zipfile
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+STYLE_H1   = ParagraphStyle("h1", fontName="Helvetica-Bold", fontSize=14, leading=17)
+STYLE_SUB  = ParagraphStyle("sub", fontName="Helvetica", fontSize=10, leading=13,
+                            textColor=colors.HexColor("#555555"))
+STYLE_NOTE = ParagraphStyle("note", fontName="Helvetica", fontSize=7.5, leading=9)
 
 from ..database import get_db
 from ..models import User, TimeEntry, TimeEntryEdit, Message
@@ -462,6 +474,137 @@ def delete_entry(
 
 # ── Manual punch for a user ───────────────────────────────────────────────────
 
+# Monthly hours are contractual: weekly hours spread over an average month.
+WEEKS_PER_MONTH = 4.35
+
+
+def _monthly_pdf(user: User, year: int, month: int, db: Session) -> bytes:
+    """One employee's monthly sheet, print-ready. PDF rather than CSV so the
+    column widths, page size and signature block are fixed — a spreadsheet
+    applies its own defaults and cuts content off."""
+    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    end   = datetime(year + 1, 1, 1, tzinfo=timezone.utc) if month == 12 \
+            else datetime(year, month + 1, 1, tzinfo=timezone.utc)
+
+    entries = (
+        db.query(TimeEntry)
+        .filter(TimeEntry.user_id == user.id,
+                TimeEntry.punch_in >= start,
+                TimeEntry.punch_in < end)
+        .order_by(TimeEntry.punch_in)
+        .all()
+    )
+
+    def vienna(dt):
+        return dt.astimezone(VIENNA_TZ) if dt else None
+
+    def hm(dt):
+        d = vienna(dt)
+        return d.strftime("%H:%M") if d else ""
+
+    def dur(mins):
+        if mins is None:
+            return ""
+        sign = "-" if mins < 0 else ""
+        h, m = divmod(abs(mins), 60)
+        return f"{sign}{h}:{m:02d}"
+
+    def lunch_minutes(e) -> int:
+        if not (e.lunch_start and e.lunch_end):
+            return 0
+        return max(0, int((e.lunch_end - e.lunch_start).total_seconds() / 60))
+
+    total_abgerechnet = sum(e.duration_minutes or 0 for e in entries)
+    total_lunch       = sum(lunch_minutes(e) for e in entries)
+    total_geleistet   = max(0, total_abgerechnet - total_lunch)
+    bezahlt           = round((user.expected_hours or 0) * WEEKS_PER_MONTH * 60)
+    saldo             = total_geleistet - bezahlt   # positive = Mehrarbeit
+
+    rows = [["Datum", "Von", "Bis", "Abgerechnete\nStunden",
+             "Tatsächlich\ngeleistete", "Mittagspause", "Notiz"]]
+    for e in entries:
+        net = max(0, e.duration_minutes - lunch_minutes(e)) if e.duration_minutes is not None else None
+        pause = f"{hm(e.lunch_start)}\u2013{hm(e.lunch_end)}" if (e.lunch_start and e.lunch_end) else ""
+        rows.append([
+            vienna(e.punch_in).strftime("%d.%m.") if e.punch_in else "",
+            hm(e.punch_in),
+            hm(e.punch_out) if e.punch_out else "läuft",
+            dur(e.duration_minutes),
+            dur(net),
+            pause,
+            Paragraph(e.note, STYLE_NOTE) if e.note else "",
+        ])
+    rows.append(["Gesamt", "", "", dur(total_abgerechnet), dur(total_geleistet),
+                 dur(total_lunch), ""])
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=18 * mm, rightMargin=18 * mm,
+        topMargin=16 * mm, bottomMargin=16 * mm,
+        title=f"Arbeitszeit {user.name} {month:02d}/{year}",
+        author="TimePunch",
+    )
+
+    table = Table(
+        rows, repeatRows=1,
+        colWidths=[16 * mm, 14 * mm, 14 * mm, 24 * mm, 24 * mm, 24 * mm, 58 * mm],
+    )
+    table.setStyle(TableStyle([
+        ("FONTNAME",   (0, 0), (-1, 0),  "Helvetica-Bold"),
+        ("FONTSIZE",   (0, 0), (-1, -1), 8),
+        ("LEADING",    (0, 0), (-1, -1), 10),
+        ("BACKGROUND", (0, 0), (-1, 0),  colors.HexColor("#E8E8E8")),
+        ("LINEBELOW",  (0, 0), (-1, 0),  0.6, colors.black),
+        ("FONTNAME",   (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("LINEABOVE",  (0, -1), (-1, -1), 0.6, colors.black),
+        ("ALIGN",      (1, 0), (5, -1),  "CENTER"),
+        ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID",       (0, 0), (-1, -1), 0.25, colors.HexColor("#999999")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#F6F6F6")]),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+
+    summary = Table([
+        ["Bezahlte Stunden", dur(bezahlt), f"({user.expected_hours or 0:g} h/Woche)"],
+        ["Stundensaldo",     dur(saldo),   ""],
+    ], colWidths=[40 * mm, 24 * mm, 40 * mm], hAlign="LEFT")
+    summary.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ALIGN",    (1, 0), (1, -1), "RIGHT"),
+        ("TEXTCOLOR",(2, 0), (2, -1), colors.HexColor("#666666")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+
+    sign = Table([
+        ["Unterschrift Mitarbeiter:", "", "Unterschrift Kirchenmeister:", ""],
+    ], colWidths=[44 * mm, 40 * mm, 48 * mm, 42 * mm], hAlign="LEFT")
+    sign.setStyle(TableStyle([
+        ("FONTSIZE",  (0, 0), (-1, -1), 9),
+        ("LINEBELOW", (1, 0), (1, 0), 0.5, colors.black),
+        ("LINEBELOW", (3, 0), (3, 0), 0.5, colors.black),
+        ("VALIGN",    (0, 0), (-1, -1), "BOTTOM"),
+    ]))
+
+    MONTHS_DE = ["Jänner", "Februar", "März", "April", "Mai", "Juni",
+                 "Juli", "August", "September", "Oktober", "November", "Dezember"]
+    doc.build([
+        Paragraph(f"Arbeitszeitnachweis – {user.name}", STYLE_H1),
+        Paragraph(f"{MONTHS_DE[month - 1]} {year}", STYLE_SUB),
+        Spacer(1, 6 * mm),
+        table,
+        Spacer(1, 6 * mm),
+        summary,
+        Spacer(1, 16 * mm),
+        sign,
+    ])
+    return buf.getvalue()
+
+
 @router.get("/export/monthly")
 def export_monthly(
     user_id: int = Query(...),
@@ -472,94 +615,45 @@ def export_monthly(
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Mitarbeiter nicht gefunden")
     _require_scope(current_admin, user)
 
-    # Build UTC window for the requested month
-    start = datetime(year, month, 1, tzinfo=timezone.utc)
-    if month == 12:
-        end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
-    else:
-        end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
-
-    entries = (
-        db.query(TimeEntry)
-        .filter(
-            TimeEntry.user_id == user_id,
-            TimeEntry.punch_in >= start,
-            TimeEntry.punch_in < end,
-        )
-        .order_by(TimeEntry.punch_in)
-        .all()
+    filename = f"Arbeitszeit_{user.username}_{year}-{month:02d}.pdf"
+    return StreamingResponse(
+        iter([_monthly_pdf(user, year, month, db)]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
-    # Stored instants are UTC; the Postgres session timezone in the container is
-    # UTC too, so convert explicitly or every time reads an hour or two early.
-    # Every cell carries a letter ("Uhr", "h", "min") on purpose: a bare "07:00"
-    # or "8,0" gets reinterpreted as a time, date or number by the spreadsheet,
-    # whereas text containing letters is left exactly as written.
-    def fmt_time(dt):
-        if not dt:
-            return ""
-        return dt.astimezone(VIENNA_TZ).strftime("%H:%M") + " Uhr"
 
-    def fmt_dur(mins):
-        if mins is None:
-            return ""
-        h, m = divmod(mins, 60)
-        return f"{h}h {m:02d}min"
+@router.get("/export/monthly/all")
+def export_monthly_all(
+    year:  int = Query(...),
+    month: int = Query(...),
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin),
+):
+    """Every employee's monthly sheet in one ZIP (respects a group-limited admin)."""
+    users = (
+        _scoped(db.query(User), current_admin)
+        .filter(User.is_admin == False)
+        .order_by(User.last_name, User.first_name)
+        .all()
+    )
+    if not users:
+        raise HTTPException(status_code=404, detail="Keine Mitarbeiter vorhanden")
 
-    def lunch_minutes(e) -> int:
-        if not (e.lunch_start and e.lunch_end):
-            return 0
-        return max(0, int((e.lunch_end - e.lunch_start).total_seconds() / 60))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for u in users:
+            zf.writestr(f"Arbeitszeit_{u.username}_{year}-{month:02d}.pdf",
+                        _monthly_pdf(u, year, month, db))
+    buf.seek(0)
 
-    def fmt_std(mins) -> str:
-        h, m = divmod(mins, 60)
-        return f"{h}:{m:02d} Std."
-
-    def fmt_lunch(e) -> str:
-        if not (e.lunch_start and e.lunch_end):
-            return ""
-        return f"{fmt_time(e.lunch_start)} - {fmt_time(e.lunch_end)}"
-
-    total_gross = sum(e.duration_minutes or 0 for e in entries)
-    total_lunch = sum(lunch_minutes(e) for e in entries)
-    total_net   = max(0, total_gross - total_lunch)
-    total_soll  = (user.expected_hours or 0) * len(entries)
-
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=";")
-
-    writer.writerow(["Mitarbeiter", user.name, f"{month:02d}/{year}"])
-    writer.writerow([])
-    writer.writerow(["Datum", "Einstempeln", "Ausstempeln", "Dauer", "Mittagspause",
-                     "SOLL-Arbeitszeit", "IST-Arbeitszeit", "Notiz"])
-
-    for e in entries:
-        net = max(0, e.duration_minutes - lunch_minutes(e)) if e.duration_minutes is not None else None
-        writer.writerow([
-            e.punch_in.astimezone(VIENNA_TZ).strftime("%d.%m.%Y") if e.punch_in else "",
-            fmt_time(e.punch_in),
-            fmt_time(e.punch_out) if e.punch_out else "läuft",
-            fmt_dur(e.duration_minutes),
-            fmt_lunch(e),
-            fmt_std(round((user.expected_hours or 0) * 60)),
-            fmt_std(net) if net is not None else "",
-            e.note or "",
-        ])
-
-    writer.writerow([])
-    writer.writerow(["Gesamt", "", "", fmt_dur(total_gross), fmt_dur(total_lunch),
-                     fmt_std(round(total_soll * 60)), fmt_std(total_net), ""])
-
-    filename = f"timepunch_{user.username}_{year}-{month:02d}.csv"
-    output.seek(0)
-    content = "\uFEFF" + output.getvalue()  # BOM for Excel
-
+    filename = f"Arbeitszeit_alle_{year}-{month:02d}.zip"
     return StreamingResponse(
-        iter([content.encode("utf-8")]),
-        media_type="text/csv; charset=utf-8",
+        iter([buf.getvalue()]),
+        media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

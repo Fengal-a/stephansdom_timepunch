@@ -14,6 +14,11 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS work_group             VARCHAR;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS checkin_cutoff         VARCHAR;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_scope            VARCHAR;
 
+-- expected_hours now means hours per WEEK (monthly Soll = weekly x 4.35).
+-- Existing rows are NOT changed: set each employee's real weekly hours in
+-- the admin panel, or with a deliberate UPDATE.
+ALTER TABLE users ALTER COLUMN expected_hours SET DEFAULT 40.0;
+
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS recipient_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 
 -- Latest manual correction, shown in the admin UI under the entry.

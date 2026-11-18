@@ -24,7 +24,7 @@ class User(Base):
     created_at             = Column(DateTime(timezone=True), server_default=func.now())
     failed_login_attempts  = Column(Integer, default=0, nullable=False, server_default="0")
     locked_until           = Column(DateTime(timezone=True), nullable=True)
-    expected_hours         = Column(Float, default=8.0, nullable=False, server_default="8.0")
+    expected_hours         = Column(Float, default=40.0, nullable=False, server_default="8.0")  # hours per WEEK
     work_group             = Column(String, nullable=True)  # "group" is reserved in SQL
     # For admins only: limits them to one work_group. NULL = sees everyone.
     admin_scope            = Column(String, nullable=True)

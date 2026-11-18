@@ -83,7 +83,7 @@ function exportCSV(entries, users) {
     : "";
 
   const rows = [
-    ["Name", "Einstempeln", "Ausstempeln", "Mittagspause", "SOLL-Arbeitszeit", "IST-Arbeitszeit", "Notizen"],
+    ["Name", "Einstempeln", "Ausstempeln", "Mittagspause", "Tatsächlich geleistete", "Notizen"],
     ...Object.entries(byUser).map(([userId, userEntries]) => {
       const user  = userMap[userId];
       const name  = user?.name ?? userId;
@@ -109,7 +109,6 @@ function exportCSV(entries, users) {
         toTime(firstIn),
         lastOut ? toTime(lastOut) : "läuft",
         withLunch ? lunchRange(withLunch.lunch_start, withLunch.lunch_end) : "",
-        dur(Math.round((user?.expected_hours ?? 8) * 60)),
         grossMin ? dur(netMin) : "",
         notes,
       ];
@@ -203,29 +202,44 @@ function MonthlyExportModal({ users, onClose }) {
   const [year,   setYear]   = useState(now.getFullYear());
   const [month,  setMonth]  = useState(now.getMonth() + 1);
   const [loading, setLoading] = useState(false);
+  const [loadingAll, setLoadingAll] = useState(false);
+  const [error, setError] = useState("");
 
   const MONTHS = [
     "Jänner","Februar","März","April","Mai","Juni",
     "Juli","August","September","Oktober","November","Dezember"
   ];
 
+  async function download(url, fallbackName) {
+    setError("");
+    const token = localStorage.getItem("token");
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setError(d.detail || "Export fehlgeschlagen");
+      return false;
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    const cd = res.headers.get("Content-Disposition") ?? "";
+    const match = cd.match(/filename="([^"]+)"/);
+    a.download = match ? match[1] : fallbackName;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    return true;
+  }
+
   async function handleExport() {
     setLoading(true);
-    const token = localStorage.getItem("token");
-    const url = `${API}/admin/export/monthly?user_id=${userId}&year=${year}&month=${month}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (res.ok) {
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      const cd = res.headers.get("Content-Disposition") ?? "";
-      const match = cd.match(/filename="([^"]+)"/);
-      a.download = match ? match[1] : "export.csv";
-      a.click();
-      URL.revokeObjectURL(a.href);
-      onClose();
-    }
+    if (await download(`${API}/admin/export/monthly?user_id=${userId}&year=${year}&month=${month}`, "Arbeitszeit.pdf")) onClose();
     setLoading(false);
+  }
+
+  async function handleExportAll() {
+    setLoadingAll(true);
+    if (await download(`${API}/admin/export/monthly/all?year=${year}&month=${month}`, "export.zip")) onClose();
+    setLoadingAll(false);
   }
 
   // Build year options: current year and two prior
@@ -236,8 +250,9 @@ function MonthlyExportModal({ users, onClose }) {
       <div style={s.modal} onClick={e => e.stopPropagation()}>
         <p style={s.modalTitle}>Monatsexport</p>
         <p style={{ margin: 0, fontSize: "12px", color: MUTED }}>
-          CSV-Export für einen Mitarbeiter über einen vollen Monat
+          Druckfertiger Arbeitszeitnachweis zum Unterschreiben
         </p>
+        {error && <p style={s.errorBox}>{error}</p>}
         <div style={s.field}>
           <label style={s.label}>Mitarbeiter</label>
           <select
@@ -276,10 +291,17 @@ function MonthlyExportModal({ users, onClose }) {
             </select>
           </div>
         </div>
+        <button
+          className="btn-ghost-hover"
+          style={{ ...s.ghostBtn, padding: "11px", letterSpacing: "0.06em" }}
+          onClick={handleExportAll} disabled={loading || loadingAll}
+        >
+          {loadingAll ? "..." : `↓ Alle ${users.length} als PDF (ZIP)`}
+        </button>
         <div style={s.modalBtns}>
           <button className="btn-ghost-hover" style={s.cancelBtn} onClick={onClose}>Abbrechen</button>
-          <button className="btn-orange-hover" style={s.confirmBtn} onClick={handleExport} disabled={loading || !userId}>
-            {loading ? "..." : "↓ CSV herunterladen"}
+          <button className="btn-orange-hover" style={s.confirmBtn} onClick={handleExport} disabled={loading || loadingAll || !userId}>
+            {loading ? "..." : "↓ PDF – nur dieser"}
           </button>
         </div>
       </div>
@@ -418,9 +440,9 @@ function EditUserModal({ user: targetUser, onClose, onSaved }) {
           </div>
         ))}
         <div style={s.field}>
-          <label style={s.label}>SOLL-Arbeitszeit (Stunden/Tag)</label>
+          <label style={s.label}>Wochenstunden</label>
           <input
-            style={s.input} type="number" min="0" max="24" step="0.5"
+            style={s.input} type="number" min="0" max="80" step="0.5"
             value={form.expected_hours}
             onChange={e => setForm(p => ({ ...p, expected_hours: e.target.value }))}
           />
