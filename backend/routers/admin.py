@@ -16,7 +16,7 @@ from ..database import get_db
 from ..models import User, TimeEntry, TimeEntryEdit, Message
 from ..schemas import UserOut, TimeEntryOut, UserCreate, LunchRequest
 from .auth import require_admin, get_current_user
-from .time_entries import WORK_GROUPS, parse_cutoff
+from .time_entries import WORK_GROUPS
 from ..email_utils import send_invite_email
 
 VIENNA_TZ  = ZoneInfo("Europe/Vienna")
@@ -39,12 +39,6 @@ def _require_entry_scope(admin: User, db: Session, entry: TimeEntry) -> None:
     owner = db.query(User).filter(User.id == entry.user_id).first()
     if not owner or owner.work_group != admin.admin_scope:
         raise HTTPException(status_code=403, detail="Kein Zugriff auf diesen Eintrag")
-
-
-def _clean_cutoff(value) -> str | None:
-    """Normalise to "HH:MM"; anything unparseable clears the override."""
-    parsed = parse_cutoff(value)
-    return f"{parsed[0]:02d}:{parsed[1]:02d}" if parsed else None
 
 
 def _clean_group(value) -> str | None:
@@ -133,7 +127,6 @@ def create_user(
         password_hash=hashed,
         is_admin=payload.is_admin,
         work_group=_clean_group(payload.work_group),
-        checkin_cutoff=_clean_cutoff(payload.checkin_cutoff),
     )
     db.add(user)
     db.commit()
@@ -246,8 +239,6 @@ def update_user(
         user.admin_scope = (payload["admin_scope"] or "").strip() or None
     if "work_group" in payload:
         user.work_group = _clean_group(payload["work_group"])
-    if "checkin_cutoff" in payload:
-        user.checkin_cutoff = _clean_cutoff(payload["checkin_cutoff"])
     if "expected_hours" in payload:
         try:
             user.expected_hours = float(payload["expected_hours"])
@@ -305,31 +296,6 @@ def get_todays_entries(
         .order_by(TimeEntry.punch_in.desc())
         .all()
     )
-
-
-@router.get("/entries/active")
-def get_active_entries(
-    db: Session = Depends(get_db),
-    current_admin: User = Depends(require_admin),
-):
-    """Returns open entries (punch_out IS NULL) with user info."""
-    entries = (
-        db.query(TimeEntry)
-        .filter(TimeEntry.punch_out.is_(None))
-        .all()
-    )
-    result = []
-    for e in entries:
-        user = db.query(User).filter(User.id == e.user_id).first()
-        if current_admin.admin_scope and (not user or user.work_group != current_admin.admin_scope):
-            continue
-        result.append({
-            "entry_id": e.id,
-            "user_id": e.user_id,
-            "user_name": user.name if user else "?",
-            "punch_in": e.punch_in,
-        })
-    return result
 
 
 @router.post("/entries/{entry_id}/lunch")
@@ -495,42 +461,6 @@ def delete_entry(
 
 
 # ── Manual punch for a user ───────────────────────────────────────────────────
-
-@router.post("/users/{user_id}/punch")
-def admin_punch(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_admin: User = Depends(require_admin),
-):
-    """Same toggle logic as user punch, but callable by admin for any user."""
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    _require_scope(current_admin, user)
-
-    open_entry = (
-        db.query(TimeEntry)
-        .filter(TimeEntry.user_id == user_id, TimeEntry.punch_out.is_(None))
-        .first()
-    )
-    now = datetime.now(timezone.utc)
-
-    if open_entry is None:
-        entry = TimeEntry(user_id=user_id, punch_in=now)
-        db.add(entry)
-        db.commit()
-        db.refresh(entry)
-        return {"action": "punched_in", "entry_id": entry.id}
-    else:
-        punch_in_utc = open_entry.punch_in.astimezone(timezone.utc) if open_entry.punch_in.tzinfo else open_entry.punch_in.replace(tzinfo=timezone.utc)
-        duration = int((now - punch_in_utc).total_seconds() / 60)
-        open_entry.punch_out = now
-        open_entry.duration_minutes = duration
-        db.commit()
-        return {"action": "punched_out", "duration_minutes": duration}
-
-
-# ── Monthly CSV export for a single employee ─────────────────────────────────
 
 @router.get("/export/monthly")
 def export_monthly(

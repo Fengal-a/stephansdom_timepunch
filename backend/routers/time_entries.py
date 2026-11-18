@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date as date_cls
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 import ipaddress
@@ -8,7 +8,7 @@ import os
 
 from ..database import get_db
 from ..models import User, TimeEntry
-from ..schemas import PunchResponse, PunchRequest, TimeEntryOut, LunchRequest
+from ..schemas import TimeEntryOut, LunchRequest
 from .auth import get_current_user
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -24,6 +24,10 @@ VIENNA_TZ       = ZoneInfo("Europe/Vienna")
 WORK_GROUPS   = ("Domführer", "Aufsicht", "Mesner", "Kirchenmeisteramt", "Homeoffice")
 REMOTE_GROUPS = ("Homeoffice",)
 BUERO_GROUPS  = ("Kirchenmeisteramt",)
+
+# Employees now enter their own time windows, so the location check is off.
+# Set to True to re-enable it; OFFICE_NETWORKS / BUERO_NETWORKS still apply.
+NETWORK_RESTRICTION_ENABLED = False
 
 
 def _in_networks(client_ip: str, cidrs: str) -> bool:
@@ -55,117 +59,8 @@ def _may_punch_from(client_ip: str, group: str) -> bool:
     return _in_networks(client_ip, allowed)
 
 
-MAX_SHIFT_HOURS    = 12
-AUTO_PUNCHOUT_HOUR = 21  # 9 PM Vienna time
-
-
 def _to_utc(dt: datetime) -> datetime:
     return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
-
-
-def _auto_close_time(punch_in: datetime) -> datetime:
-    """Returns the UTC time at which an open entry should be force-closed.
-    Rule: earlier of (21:00 Vienna on punch_in day) or (punch_in + 10 h)."""
-    punch_in_utc    = _to_utc(punch_in)
-    punch_in_vienna = punch_in_utc.astimezone(VIENNA_TZ)
-
-    cutoff_9pm = punch_in_vienna.replace(
-        hour=AUTO_PUNCHOUT_HOUR, minute=0, second=0, microsecond=0
-    )
-    if punch_in_vienna.hour >= AUTO_PUNCHOUT_HOUR:
-        cutoff_9pm += timedelta(days=1)
-
-    return min(cutoff_9pm.astimezone(timezone.utc), punch_in_utc + timedelta(hours=MAX_SHIFT_HOURS))
-
-
-def _close_stale_entries(db: Session) -> None:
-    """Auto-punch-out any open entries that have passed their force-close time."""
-    now          = datetime.now(timezone.utc)
-    open_entries = db.query(TimeEntry).filter(TimeEntry.punch_out.is_(None)).all()
-    changed      = False
-    for entry in open_entries:
-        close_at = _auto_close_time(entry.punch_in)
-        if now >= close_at:
-            punch_in_utc          = _to_utc(entry.punch_in)
-            entry.punch_out       = close_at
-            entry.duration_minutes = int((close_at - punch_in_utc).total_seconds() / 60)
-            changed = True
-    if changed:
-        db.commit()
-
-
-def _past_checkin_cutoff(cutoff) -> bool:
-    now = datetime.now(VIENNA_TZ)
-    return (now.hour, now.minute) > cutoff
-
-
-def parse_cutoff(value):
-    """"HH:MM" -> (h, m), or None if unset/malformed (which means "no override")."""
-    try:
-        h, m = map(int, (value or "").strip().split(":"))
-    except (ValueError, AttributeError):
-        return None
-    return (h, m) if 0 <= h <= 23 and 0 <= m <= 59 else None
-
-
-# ── Punch in / out ────────────────────────────────────────────────────────────
-
-@router.post("/punch", response_model=PunchResponse)
-def punch(
-    request: Request,
-    payload: PunchRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _close_stale_entries(db)
-
-    open_entry = (
-        db.query(TimeEntry)
-        .filter(TimeEntry.user_id == current_user.id, TimeEntry.punch_out.is_(None))
-        .first()
-    )
-    is_punch_in = open_entry is None
-
-    if not current_user.is_admin:
-        group = (current_user.work_group or "").strip()
-
-        client_ip = request.headers.get("X-Real-IP") or request.client.host
-        if not _may_punch_from(client_ip, group):
-            raise HTTPException(
-                status_code=403,
-                detail="Stempeln nur im Büro-Netzwerk oder im Stephansdom-WLAN möglich."
-                       if group in BUERO_GROUPS else
-                       "Stempeln nur im Stephansdom-WLAN möglich.",
-            )
-        # There is no general check-in deadline any more — everyone may punch in
-        # at any hour. A per-person limit still applies if an admin sets one.
-        if is_punch_in:
-            own_cutoff = parse_cutoff(current_user.checkin_cutoff)
-            if own_cutoff and _past_checkin_cutoff(own_cutoff):
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Einstempeln nach {own_cutoff[0]:02d}:{own_cutoff[1]:02d} Uhr nicht möglich. "
-                           "Bitte den Administrator kontaktieren.",
-                )
-
-    now = datetime.now(timezone.utc)
-
-    if open_entry is None:
-        entry = TimeEntry(user_id=current_user.id, punch_in=now)
-        db.add(entry)
-        db.commit()
-        db.refresh(entry)
-        return PunchResponse(action="punched_in", user_id=current_user.id, entry=entry)
-    else:
-        punch_in_utc           = _to_utc(open_entry.punch_in)
-        effective_out          = min(now, _auto_close_time(open_entry.punch_in))
-        duration               = int((effective_out - punch_in_utc).total_seconds() / 60)
-        open_entry.punch_out   = effective_out
-        open_entry.duration_minutes = duration
-        open_entry.note = payload.note  # may be None — that's fine
-        db.commit()
-        db.refresh(open_entry)
-        return PunchResponse(action="punched_out", user_id=current_user.id, entry=open_entry)
 
 
 # ── Status & history ──────────────────────────────────────────────────────────
@@ -241,3 +136,137 @@ def get_my_entries(
         .order_by(TimeEntry.punch_in.desc())
         .all()
     )
+
+
+# ── Employees record their own time windows (today only) ─────────────────────
+
+def _today_vienna() -> date_cls:
+    return datetime.now(VIENNA_TZ).date()
+
+
+def _parse_window(day, raw_in: str, raw_out: str):
+    """"HH:MM" pair on `day` (Vienna) -> (start_utc, end_utc)."""
+    def one(value: str) -> datetime:
+        h, m = map(int, (value or "").strip().split(":"))
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            raise ValueError
+        return datetime(day.year, day.month, day.day, h, m, tzinfo=VIENNA_TZ).astimezone(timezone.utc)
+
+    try:
+        start, end = one(raw_in), one(raw_out)
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=422, detail="Ungültige Uhrzeit (HH:MM erwartet)")
+    if end <= start:
+        raise HTTPException(status_code=422, detail="Die Endzeit muss nach der Startzeit liegen")
+    return start, end
+
+
+def _own_today_entry(entry_id: int, user: User, db: Session) -> TimeEntry:
+    """An employee may only touch their own entries, and only today's."""
+    entry = db.query(TimeEntry).filter(
+        TimeEntry.id == entry_id, TimeEntry.user_id == user.id
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
+    if _to_utc(entry.punch_in).astimezone(VIENNA_TZ).date() != _today_vienna():
+        raise HTTPException(
+            status_code=403,
+            detail="Nur die heutigen Zeiten können geändert werden. Bitte den Administrator kontaktieren.",
+        )
+    return entry
+
+
+def _assert_no_overlap(user: User, db: Session, start, end, exclude_id=None) -> None:
+    """Overlapping windows would double-count hours, so they are almost always
+    a typo rather than an intent."""
+    day = start.astimezone(VIENNA_TZ).date()
+    day_start = datetime(day.year, day.month, day.day, tzinfo=VIENNA_TZ).astimezone(timezone.utc)
+    others = db.query(TimeEntry).filter(
+        TimeEntry.user_id == user.id,
+        TimeEntry.punch_in >= day_start,
+        TimeEntry.punch_in < day_start + timedelta(days=1),
+    ).all()
+    for other in others:
+        if exclude_id and other.id == exclude_id:
+            continue
+        o_start = _to_utc(other.punch_in)
+        o_end   = _to_utc(other.punch_out) if other.punch_out else o_start
+        if start < o_end and o_start < end:
+            o_in  = o_start.astimezone(VIENNA_TZ).strftime("%H:%M")
+            o_out = o_end.astimezone(VIENNA_TZ).strftime("%H:%M")
+            raise HTTPException(
+                status_code=409,
+                detail=f"Überschneidet sich mit {o_in}–{o_out} Uhr",
+            )
+
+
+@router.post("/entries", response_model=TimeEntryOut)
+def create_own_entry(
+    request: Request,
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # Location check, currently disabled. Flip NETWORK_RESTRICTION_ENABLED to
+    # restrict where employees may record their hours; the group rules
+    # (Homeoffice / Kirchenmeisteramt) still apply exactly as before.
+    if NETWORK_RESTRICTION_ENABLED and not current_user.is_admin:
+        group     = (current_user.work_group or "").strip()
+        client_ip = request.headers.get("X-Real-IP") or request.client.host
+        if not _may_punch_from(client_ip, group):
+            raise HTTPException(
+                status_code=403,
+                detail="Zeiterfassung nur im Büro-Netzwerk oder im Stephansdom-WLAN möglich."
+                       if group in BUERO_GROUPS else
+                       "Zeiterfassung nur im Stephansdom-WLAN möglich.",
+            )
+
+    day = _today_vienna()
+    start, end = _parse_window(day, payload.get("punch_in"), payload.get("punch_out"))
+    _assert_no_overlap(current_user, db, start, end)
+
+    entry = TimeEntry(
+        user_id=current_user.id,
+        punch_in=start,
+        punch_out=end,
+        duration_minutes=int((end - start).total_seconds() / 60),
+        note=(payload.get("note") or "").strip() or None,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@router.patch("/entries/{entry_id}", response_model=TimeEntryOut)
+def update_own_entry(
+    entry_id: int,
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    entry = _own_today_entry(entry_id, current_user, db)
+    day   = _to_utc(entry.punch_in).astimezone(VIENNA_TZ).date()
+    start, end = _parse_window(day, payload.get("punch_in"), payload.get("punch_out"))
+    _assert_no_overlap(current_user, db, start, end, exclude_id=entry.id)
+
+    entry.punch_in         = start
+    entry.punch_out        = end
+    entry.duration_minutes = int((end - start).total_seconds() / 60)
+    if "note" in payload:
+        entry.note = (payload.get("note") or "").strip() or None
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@router.delete("/entries/{entry_id}")
+def delete_own_entry(
+    entry_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    entry = _own_today_entry(entry_id, current_user, db)
+    db.delete(entry)
+    db.commit()
+    return {"ok": True}

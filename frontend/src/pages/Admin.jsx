@@ -17,11 +17,6 @@ const GROUP_HINTS = {
   "Homeoffice": "Stempeln von überall.",
 };
 
-function cutoffHint(cutoff) {
-  if (cutoff) return `Einstempeln nur bis ${cutoff} Uhr — gilt vor der Gruppenregel.`;
-  return "Keine Zeitgrenze — Einstempeln jederzeit möglich.";
-}
-
 function GroupFields({ form, setForm }) {
   return (
     <>
@@ -33,14 +28,6 @@ function GroupFields({ form, setForm }) {
           {WORK_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
         <p style={s.fieldHint}>{GROUP_HINTS[form.work_group] ?? GROUP_HINTS[""]}</p>
-      </div>
-      <div style={s.field}>
-        <label style={s.label}>Einstempeln bis (optional)</label>
-        <input
-          type="time" style={s.input} value={form.checkin_cutoff}
-          onChange={e => setForm(p => ({ ...p, checkin_cutoff: e.target.value }))}
-        />
-        <p style={s.fieldHint}>{cutoffHint(form.checkin_cutoff)}</p>
       </div>
     </>
   );
@@ -141,7 +128,7 @@ function exportCSV(entries, users) {
 // ── Add User Modal ────────────────────────────────────────────────────────────
 
 function AddUserModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", password: "", work_group: "", checkin_cutoff: "" });
+  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", password: "", work_group: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const inviteMode = form.email.trim().length > 0;
@@ -364,7 +351,7 @@ function ResetPasswordModal({ user: targetUser, onClose }) {
 // ── Edit User Modal ───────────────────────────────────────────────────────────
 
 function EditUserModal({ user: targetUser, onClose, onSaved }) {
-  const [form,     setForm]     = useState({ first_name: targetUser.first_name ?? "", last_name: targetUser.last_name ?? "", username: targetUser.username, email: targetUser.email ?? "", is_admin: targetUser.is_admin, expected_hours: targetUser.expected_hours ?? 8, work_group: targetUser.work_group ?? "", checkin_cutoff: targetUser.checkin_cutoff ?? "" });
+  const [form,     setForm]     = useState({ first_name: targetUser.first_name ?? "", last_name: targetUser.last_name ?? "", username: targetUser.username, email: targetUser.email ?? "", is_admin: targetUser.is_admin, expected_hours: targetUser.expected_hours ?? 8, work_group: targetUser.work_group ?? "" });
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
   const [pwError,  setPwError]  = useState("");
@@ -721,7 +708,6 @@ function ComposeModal({ users, onClose, onSent }) {
 export default function Admin({ user, onLogout }) {
   const [users,         setUsers]         = useState([]);
   const [entries,       setEntries]       = useState([]);
-  const [activeEntries, setActiveEntries] = useState([]);
   const [messages,      setMessages]      = useState([]);
   const [expandedUser,  setExpandedUser]  = useState(null);
   const [showAddUser,      setShowAddUser]      = useState(false);
@@ -738,10 +724,8 @@ export default function Admin({ user, onLogout }) {
   const [inboxOpen,        setInboxOpen]        = useState(true);
   const [msgFilter,        setMsgFilter]        = useState("all");
   const [msgSearch,        setMsgSearch]        = useState("");
-  const [activeSearch,     setActiveSearch]     = useState("");
   const [entriesSearch,    setEntriesSearch]    = useState("");
   const [loadError,        setLoadError]        = useState("");
-  const [activeOpen,       setActiveOpen]       = useState(true);
   const [loading,       setLoading]       = useState(true);
   const [page,          setPage]          = useState("admin"); // "admin" | "dienstplan"
   const [subPage,       setSubPage]       = useState("overview"); // "overview" | "mitarbeiter"
@@ -754,10 +738,9 @@ export default function Admin({ user, onLogout }) {
   async function fetchAll() {
     setLoading(true);
     try {
-      const [uRes, eRes, aRes, mRes] = await Promise.all([
+      const [uRes, eRes, mRes] = await Promise.all([
         fetch(`${API}/admin/users`,          { headers: authHeaders() }),
         fetch(`${API}/admin/entries/today?date=${entriesDate}`, { headers: authHeaders() }),
-        fetch(`${API}/admin/entries/active`, { headers: authHeaders() }),
         fetch(`${API}/messages`,             { headers: authHeaders() }),
       ]);
       if (uRes.status === 401) { onLogout(); return; }
@@ -765,7 +748,6 @@ export default function Admin({ user, onLogout }) {
       // in render, so an error body like {detail:"..."} would crash the panel.
       if (uRes.ok) setUsers(await uRes.json());
       if (eRes.ok) setEntries(await eRes.json());
-      if (aRes.ok) setActiveEntries(await aRes.json());
       if (mRes.ok) setMessages(await mRes.json());
       setLoadError(uRes.ok ? "" : `Daten konnten nicht geladen werden (HTTP ${uRes.status})`);
     } catch {
@@ -799,32 +781,6 @@ export default function Admin({ user, onLogout }) {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-  }
-
-  async function handleAdminPunch(userId) {
-    await fetch(`${API}/admin/users/${userId}/punch`, {
-      method: "POST", headers: authHeaders(),
-    });
-    fetchAll();
-  }
-
-  async function handleResendInvite(user) {
-    if (!confirm(
-      `Neue Einladung an ${user.name} (${user.email}) senden?\n\n`
-      + "Ein bereits verschickter Einladungslink wird dadurch ungültig."
-    )) return;
-    setInvitingId(user.id);
-    try {
-      const res  = await fetch(`${API}/admin/users/${user.id}/resend-invite`, {
-        method: "POST", headers: authHeaders(),
-      });
-      const data = await res.json().catch(() => ({}));
-      alert(res.ok
-        ? `Einladung an ${data.email} gesendet. Der Link ist 48 Stunden gültig.`
-        : data.detail || "Einladung konnte nicht gesendet werden");
-    } finally {
-      setInvitingId(null);
-    }
   }
 
   async function handleDeleteEntry(entryId) {
@@ -863,7 +819,6 @@ export default function Admin({ user, onLogout }) {
     return acc;
   }, {});
 
-  const activeUserIds  = new Set(activeEntries.map(e => e.user_id));
   const slideOffset    = page === "dienstplan" ? "-50%" : "0%";
 
   // Matches Vor- or Nachname independently: "F" finds both Franz Aigner and Elias Fritz.
@@ -878,8 +833,6 @@ export default function Admin({ user, onLogout }) {
   const nameMatches = (name, term) =>
     !term || (name ?? "").toLowerCase().split(/\s+/).some(part => part.startsWith(term));
 
-  const activeTerm      = activeSearch.trim().toLowerCase();
-  const visibleActive   = activeEntries.filter(ae => nameMatches(ae.user_name, activeTerm));
   const entriesTerm     = entriesSearch.trim().toLowerCase();
   const visibleEmployees = users
     .filter(u => !u.is_admin)
@@ -966,13 +919,9 @@ export default function Admin({ user, onLogout }) {
                     </p>
                   )}
                   {filteredUsers.map(u => {
-                    const isClocked = activeUserIds.has(u.id);
-                    const statusLabel = isClocked ? "Eingestempelt" : "Ausgestempelt";
-                    const statusColor = isClocked ? GREEN : MUTED;
                     return (
                       <div key={u.id} style={s.mitarbeiterRow}>
                         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                          {isClocked && <span style={s.activeDot} />}
                           <div>
                             <div style={s.userNameCell}>{u.name}</div>
                             <div style={s.userUsername}>@{u.username}</div>
@@ -980,7 +929,6 @@ export default function Admin({ user, onLogout }) {
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                           {u.work_group && <span style={s.groupTag}>{u.work_group}</span>}
-                          <span style={{ fontSize: "12px", color: statusColor }}>{statusLabel}</span>
                           {u.email && (
                             <button
                               className="btn-ghost-hover" style={s.editBtn}
@@ -1075,48 +1023,6 @@ export default function Admin({ user, onLogout }) {
                 )}
               </section>
 
-              {/* ── Active users ── */}
-              <section style={s.section}>
-                <div style={{ ...s.sectionHeader, cursor: "pointer" }} onClick={() => setActiveOpen(o => !o)}>
-                  <p style={s.sectionTitle}>AKTIV JETZT</p>
-                  <span style={s.badge}>{visibleActive.length}</span>
-                  <span style={s.collapseChevron}>{activeOpen ? "▲" : "▼"}</span>
-                </div>
-                {activeOpen && activeEntries.length > 0 && (
-                  <div style={s.inboxTools}>
-                    <span style={s.searchLabel}>Suchen</span>
-                    <input
-                      style={{ ...s.searchInput, marginLeft: "auto" }} type="text"
-                      value={activeSearch} onChange={e => setActiveSearch(e.target.value)}
-                      placeholder="Name"
-                    />
-                  </div>
-                )}
-                {!activeOpen ? null : visibleActive.length === 0 ? (
-                  <p style={s.empty}>
-                    {activeEntries.length === 0 ? "Niemand eingestempelt" : `Kein Treffer für "${activeSearch.trim()}"`}
-                  </p>
-                ) : (
-                  <div style={s.activeList}>
-                    {visibleActive.map(ae => (
-                      <div key={ae.entry_id} style={s.activeRow}>
-                        <div style={s.activeLeft}>
-                          <span style={s.activeDot} />
-                          <span style={s.activeName}>{ae.user_name}</span>
-                          <span style={s.activeSince}>seit {formatTime(ae.punch_in)}</span>
-                        </div>
-                        <button
-                          className="btn-ghost-hover" style={s.punchOutBtn}
-                          onClick={() => handleAdminPunch(ae.user_id)}
-                        >
-                          Ausstempeln
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-
               {/* ── Toolbar ── */}
               <div style={s.toolbar}>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -1168,17 +1074,15 @@ export default function Admin({ user, onLogout }) {
                   visibleEmployees.map(u => {
                     const uEntries = entriesByUser[u.id] ?? [];
                     const isExpanded = expandedUser === u.id;
-                    const isActive = activeUserIds.has(u.id);
                     const totalMins = uEntries.reduce((acc, e) => acc + (e.duration_minutes ?? 0), 0);
 
                     return (
                       <div key={u.id} style={s.userBlock}>
                         <div
-                          style={{ ...s.userRow, ...(isActive ? s.userRowActive : {}) }}
+                          style={s.userRow}
                           onClick={() => setExpandedUser(isExpanded ? null : u.id)}
                         >
                           <div style={s.userLeft}>
-                            {isActive && <span style={s.activeDot} />}
                             <span style={s.userNameCell}>{u.name}</span>
                             <span style={s.userUsername}>@{u.username}</span>
                           </div>
@@ -1242,16 +1146,6 @@ export default function Admin({ user, onLogout }) {
                                   </div>
                                 </div>
                               ))
-                            )}
-                            {/* The live punch always uses "now", so it only makes
-                                sense while today is the selected day. */}
-                            {isToday && (
-                              <button
-                                className="btn-ghost-hover" style={s.manualPunchBtn}
-                                onClick={() => handleAdminPunch(u.id)}
-                              >
-                                {isActive ? "⏹ Manuell ausstempeln" : "▶ Manuell einstempeln"}
-                              </button>
                             )}
                             <button
                               className="btn-ghost-hover" style={s.manualPunchBtn}
@@ -1493,20 +1387,6 @@ const s = {
     cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.06em",
   },
 
-  activeList: { display: "flex", flexDirection: "column" },
-  activeRow: {
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    padding: "12px 16px", borderBottom: `1px solid ${BORDER}`,
-  },
-  activeLeft:  { display: "flex", alignItems: "center", gap: "10px" },
-  activeDot:   { width: "8px", height: "8px", borderRadius: "50%", background: GREEN, flexShrink: 0 },
-  activeName:  { fontSize: "14px", color: TEXT, fontWeight: "600" },
-  activeSince: { fontSize: "11px", color: MUTED },
-  punchOutBtn: {
-    background: "rgba(180,40,40,0.15)", border: "1px solid rgba(180,40,40,0.35)",
-    borderRadius: "3px", padding: "6px 12px", fontSize: "11px",
-    color: "#e06060", cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.06em",
-  },
 
   toolbar: {
     display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -1529,7 +1409,6 @@ const s = {
     display: "flex", alignItems: "center", justifyContent: "space-between",
     padding: "14px 16px", cursor: "pointer", transition: "background 0.1s",
   },
-  userRowActive: { background: "rgba(34,197,94,0.04)" },
   userLeft:      { display: "flex", alignItems: "center", gap: "10px" },
   userNameCell:  { fontSize: "14px", color: TEXT, fontWeight: "600" },
   userUsername:  { fontSize: "11px", color: MUTED },

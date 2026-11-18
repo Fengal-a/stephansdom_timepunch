@@ -30,18 +30,13 @@ export default function Dashboard({ user, onLogout }) {
   const [status, setStatus]       = useState(null);   // { clocked_in, punch_in }
   const [entries, setEntries]     = useState([]);
   const [loading, setLoading]     = useState(true);
-  const [punching, setPunching]     = useState(false);
-  const [punchError, setPunchError] = useState("");
   const [adminMsgs, setAdminMsgs]     = useState([]);
   const [confirmDeleteMsg, setConfirmDeleteMsg] = useState(null); // message id to delete
 
   // Note modal
-  const [showNote, setShowNote]   = useState(false);
   const [note, setNote]           = useState("");
-  const noteRef                   = useRef(null);
 
   // Live clock while clocked in
-  const [elapsed, setElapsed]     = useState("");
 
   // Lunch modal
   const [showLunch,   setShowLunch]   = useState(false);
@@ -98,6 +93,11 @@ export default function Dashboard({ user, onLogout }) {
 
   // Swipe navigation
   const [page, setPage]           = useState("dashboard"); // "dashboard" | "dienstplan"
+  const [winFrom,   setWinFrom]   = useState("08:00");
+  const [winTill,   setWinTill]   = useState("16:00");
+  const [winError,  setWinError]  = useState("");
+  const [winSaving, setWinSaving] = useState(false);
+  const [editId,    setEditId]    = useState(null);
   const touchStartX               = useRef(null);
 
   useEffect(() => {
@@ -106,22 +106,6 @@ export default function Dashboard({ user, onLogout }) {
     if (!user.is_admin) fetchInbox();
   }, []);
 
-  // Tick elapsed time every 30s while clocked in
-  useEffect(() => {
-    if (!status?.clocked_in || !status?.punch_in) { setElapsed(""); return; }
-    const tick = () => {
-      const mins = Math.floor((Date.now() - new Date(status.punch_in)) / 60000);
-      setElapsed(formatDuration(mins));
-    };
-    tick();
-    const id = setInterval(tick, 30000);
-    return () => clearInterval(id);
-  }, [status]);
-
-  // Focus textarea when note modal opens
-  useEffect(() => {
-    if (showNote && noteRef.current) noteRef.current.focus();
-  }, [showNote]);
 
   async function fetchStatus() {
     try {
@@ -167,36 +151,58 @@ export default function Dashboard({ user, onLogout }) {
     setConfirmDeleteMsg(null);
   }
 
-  function handlePunchPress() {
-    if (status?.clocked_in) {
-      setNote("");
-      setShowNote(true);
-    } else {
-      doPunch(null);
+  function startEdit(e) {
+    const hhmm = iso => {
+      const d = new Date(iso);
+      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    };
+    setEditId(e.id);
+    setWinFrom(hhmm(e.punch_in));
+    setWinTill(e.punch_out ? hhmm(e.punch_out) : "16:00");
+    setNote(e.note ?? "");
+    setWinError("");
+  }
+
+  async function saveWindow() {
+    setWinSaving(true); setWinError("");
+    try {
+      const url    = editId ? `${API}/users/entries/${editId}` : `${API}/users/entries`;
+      const method = editId ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method, headers: authHeaders(),
+        body: JSON.stringify({ punch_in: winFrom, punch_out: winTill, note }),
+      });
+      if (res.status === 401) { onLogout(); return; }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setWinError(d.detail || "Konnte nicht gespeichert werden");
+        return;
+      }
+      setEditId(null);
+      setWinFrom("08:00"); setWinTill("16:00"); setNote("");
+      fetchEntries();
+    } catch {
+      setWinError("Keine Verbindung zum Server");
+    } finally {
+      setWinSaving(false);
     }
   }
 
-  async function doPunch(noteText) {
-    setPunching(true);
-    setPunchError("");
-    setShowNote(false);
+  async function deleteWindow(id) {
+    if (!confirm("Diesen Zeitraum wirklich löschen?")) return;
+    setWinError("");
     try {
-      const res = await fetch(`${API}/users/punch`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ note: noteText || null }),
-      });
-      if (res.ok) {
-        await fetchStatus();
-        await fetchEntries();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setPunchError(data.detail ?? "Fehler beim Stempeln.");
+      const res = await fetch(`${API}/users/entries/${id}`, { method: "DELETE", headers: authHeaders() });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setWinError(d.detail || "Konnte nicht gelöscht werden");
+        return;
       }
+      if (editId === id) setEditId(null);
+      fetchEntries();
     } catch {
-      setPunchError("Verbindungsfehler.");
+      setWinError("Keine Verbindung zum Server");
     }
-    setPunching(false);
   }
 
   function handleTouchStart(e) {
@@ -213,7 +219,6 @@ export default function Dashboard({ user, onLogout }) {
     if (diff > 60  && page === "dienstplan") setPage("dashboard");
   }
 
-  const clockedIn    = status?.clocked_in ?? false;
   const todayMins    = totalMinutesToday(entries);
   const slideOffset  = page === "dienstplan" ? "-50%" : "0%";
 
@@ -252,70 +257,83 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
               )}
 
-              {/* Status pill */}
-              <div style={{ ...s.pill, ...(clockedIn ? s.pillActive : s.pillInactive) }}>
-                <span style={{ ...s.pillDot, background: clockedIn ? "#22c55e" : "#6B6B6B" }} />
-                {clockedIn ? "Eingestempelt" : "Ausgestempelt"}
-              </div>
 
-              {/* Button area: big button centered, lunch button floats left */}
-              <div style={s.btnArea}>
-                <button
-                  className="btn-ghost-hover" style={s.lunchBtn}
-                  onClick={() => { setLunchError(""); setShowLunch(true); }}
-                  disabled={loading}
-                >
-                  <span style={{ fontSize: "20px", lineHeight: 1 }}>☕</span>
-                  <span>MITTAGS-</span>
-                  <span>PAUSE</span>
-                </button>
-                <button
-                  style={{
-                    ...s.bigBtn,
-                    ...(clockedIn ? s.bigBtnOut : s.bigBtnIn),
-                    ...(punching ? s.bigBtnDisabled : {}),
-                  }}
-                  onClick={handlePunchPress}
-                  disabled={punching || loading}
-                >
-                  {punching ? (
-                    <span style={s.spinner} />
-                  ) : clockedIn ? (
-                    <>
-                      <span style={s.bigBtnIcon}>■</span>
-                      <span style={s.bigBtnLabel}>AUSSTEMPELN</span>
-                    </>
-                  ) : (
-                    <>
-                      <span style={s.bigBtnIcon}>▶</span>
-                      <span style={s.bigBtnLabel}>EINSTEMPELN</span>
-                    </>
+              {/* Today's time windows — entered by the employee */}
+              <div style={s.windowCard}>
+                <p style={s.windowTitle}>Arbeitszeit heute eintragen</p>
+                <div style={s.windowForm}>
+                  <div style={s.windowField}>
+                    <label style={s.windowLabel}>Von</label>
+                    <input type="time" style={s.windowInput}
+                      value={winFrom} onChange={e => setWinFrom(e.target.value)} />
+                  </div>
+                  <div style={s.windowField}>
+                    <label style={s.windowLabel}>Bis</label>
+                    <input type="time" style={s.windowInput}
+                      value={winTill} onChange={e => setWinTill(e.target.value)} />
+                  </div>
+                  <button
+                    className="btn-orange-hover"
+                    style={{ ...s.windowSaveBtn, ...(winSaving ? s.bigBtnDisabled : {}) }}
+                    onClick={saveWindow} disabled={winSaving}
+                  >
+                    {winSaving ? "..." : editId ? "Ändern" : "+ Eintragen"}
+                  </button>
+                  {editId && (
+                    <button className="btn-ghost-hover" style={s.windowCancelBtn}
+                      onClick={() => { setEditId(null); setWinFrom("08:00"); setWinTill("16:00"); setNote(""); setWinError(""); }}>
+                      Abbrechen
+                    </button>
                   )}
+                </div>
+                <input
+                  type="text" style={s.windowNote}
+                  value={note} onChange={e => setNote(e.target.value)}
+                  placeholder="Notiz (optional)"
+                />
+                {winError && <p style={s.punchErr}>{winError}</p>}
+
+                {entries.length === 0 ? (
+                  <p style={s.windowEmpty}>Noch keine Zeiten für heute eingetragen.</p>
+                ) : (
+                  <div style={s.windowList}>
+                    {entries.map(e => (
+                      <div key={e.id} style={s.windowRow}>
+                        <span style={s.windowRowTime}>
+                          {formatTime(e.punch_in)} – {e.punch_out ? formatTime(e.punch_out) : "offen"}
+                        </span>
+                        <span style={s.windowRowDur}>
+                          {e.duration_minutes != null ? formatDuration(e.duration_minutes) : ""}
+                        </span>
+                        <button className="btn-ghost-hover" style={s.windowRowBtn}
+                          onClick={() => startEdit(e)}>✎</button>
+                        <button className="btn-danger-hover" style={s.windowRowBtn}
+                          onClick={() => deleteWindow(e.id)}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  className="btn-ghost-hover" style={s.windowLunchBtn}
+                  onClick={() => { setLunchError(""); setShowLunch(true); }}
+                  disabled={loading || entries.length === 0}
+                >
+                  ☕ Mittagspause eintragen
                 </button>
               </div>
-
-              {/* Punch error */}
-              {punchError && (
-                <p style={s.punchErr}>{punchError}</p>
-              )}
 
               {/* Stats row */}
               <div style={s.statsRow}>
                 <div style={s.stat}>
-                  <span style={s.statLabel}>Eingestempelt um</span>
-                  <span style={s.statValue}>
-                    {clockedIn ? formatTime(status.punch_in) : "--:--"}
-                  </span>
+                  <span style={s.statLabel}>Zeiträume heute</span>
+                  <span style={s.statValue}>{entries.length || "--"}</span>
                 </div>
                 <div style={s.statDivider} />
                 <div style={s.stat}>
                   <span style={s.statLabel}>Heute gearbeitet</span>
                   <span style={s.statValue}>
-                    {clockedIn && elapsed
-                      ? elapsed
-                      : todayMins > 0
-                      ? formatDuration(todayMins)
-                      : "--"}
+                    {todayMins > 0 ? formatDuration(todayMins) : "--"}
                   </span>
                 </div>
               </div>
@@ -429,29 +447,6 @@ export default function Dashboard({ user, onLogout }) {
       )}
 
       {/* Note modal outside transformed slideTrack so position:fixed works correctly */}
-      {showNote && (
-        <div style={s.overlay} onClick={() => setShowNote(false)}>
-          <div style={s.sheet} onClick={e => e.stopPropagation()}>
-            <div style={s.sheetHandle} />
-            <p style={s.sheetTitle}>Notiz hinzufügen</p>
-            <p style={s.sheetSub}>Optional — wird zum Eintrag gespeichert</p>
-            <textarea
-              ref={noteRef}
-              style={s.textarea}
-              placeholder="(Notiz hinzufügen)"
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              rows={3}
-            />
-            <button className="btn-orange-hover" style={s.confirmBtn} onClick={() => doPunch(note)}>
-              AUSSTEMPELN
-            </button>
-            <button className="btn-ghost-hover" style={s.cancelBtn} onClick={() => setShowNote(false)}>
-              Abbrechen
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Confirm delete message modal */}
       {confirmDeleteMsg !== null && (
@@ -712,6 +707,59 @@ const s = {
     textAlign: "center", maxWidth: "280px",
     padding: "8px 14px", borderRadius: "4px",
     background: "rgba(224,80,48,0.08)", border: "1px solid rgba(224,80,48,0.2)",
+  },
+
+  // ── Time windows (entered by the employee) ─────────────────────────────────
+  windowCard: {
+    background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: "6px",
+    padding: "18px 16px", display: "flex", flexDirection: "column", gap: "12px",
+  },
+  windowTitle: {
+    margin: 0, fontSize: "11px", color: MUTED, letterSpacing: "0.14em",
+    textTransform: "uppercase",
+  },
+  windowForm: { display: "flex", alignItems: "flex-end", gap: "8px", flexWrap: "wrap" },
+  windowField: { display: "flex", flexDirection: "column", gap: "4px", flex: "1 1 92px" },
+  windowLabel: { fontSize: "10px", color: MUTED, letterSpacing: "0.12em", textTransform: "uppercase" },
+  windowInput: {
+    background: BLACK, border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "11px 10px", fontSize: "16px", color: TEXT,
+    fontFamily: "inherit", outline: "none", colorScheme: "dark", width: "100%",
+  },
+  windowNote: {
+    background: BLACK, border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "9px 11px", fontSize: "13px", color: TEXT,
+    fontFamily: "inherit", outline: "none", width: "100%",
+  },
+  windowSaveBtn: {
+    background: ORANGE, border: "none", borderRadius: "3px",
+    padding: "12px 16px", fontSize: "12px", fontWeight: "700", color: "#fff",
+    cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.08em",
+    flex: "1 1 110px", minHeight: "44px",
+  },
+  windowCancelBtn: {
+    background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "12px 14px", fontSize: "12px", color: MUTED, cursor: "pointer",
+    fontFamily: "inherit", minHeight: "44px",
+  },
+  windowEmpty: { margin: 0, fontSize: "12px", color: MUTED, textAlign: "center", padding: "6px 0" },
+  windowList: { display: "flex", flexDirection: "column", gap: "6px" },
+  windowRow: {
+    display: "flex", alignItems: "center", gap: "10px",
+    background: BLACK, border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "10px 12px",
+  },
+  windowRowTime: { fontSize: "15px", color: TEXT, fontWeight: "600" },
+  windowRowDur:  { fontSize: "12px", color: MUTED, marginLeft: "auto" },
+  windowRowBtn: {
+    background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "6px 9px", fontSize: "12px", color: MUTED, cursor: "pointer",
+    fontFamily: "inherit", minWidth: "34px",
+  },
+  windowLunchBtn: {
+    background: "none", border: `1px solid ${BORDER}`, borderRadius: "3px",
+    padding: "11px", fontSize: "12px", color: MUTED, cursor: "pointer",
+    fontFamily: "inherit", letterSpacing: "0.06em",
   },
 
   // ── Stats row ──────────────────────────────────────────────────────────────

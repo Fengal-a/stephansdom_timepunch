@@ -13,7 +13,6 @@ class UserCreate(BaseModel):
     email: Optional[str] = None
     is_admin: bool = False
     work_group: Optional[str] = None
-    checkin_cutoff: Optional[str] = None
 
 
 class UserOut(BaseModel):
@@ -27,7 +26,6 @@ class UserOut(BaseModel):
     is_active: bool
     expected_hours: float = 8.0
     work_group: Optional[str] = None
-    checkin_cutoff: Optional[str] = None
     admin_scope: Optional[str] = None
     created_at: datetime
 
@@ -52,22 +50,10 @@ class TimeEntryOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class PunchRequest(BaseModel):
-    note: Optional[str] = None
-
-
 class LunchRequest(BaseModel):
     lunch_start: str  # "HH:MM"
     lunch_end: str    # "HH:MM"
 
-
-class PunchResponse(BaseModel):
-    action: str  # "punched_in" | "punched_out"
-    user_id: int
-    entry: TimeEntryOut
-
-
-# ── Message schemas ───────────────────────────────────────────────────────────
 
 class MessageCreate(BaseModel):
     body: str
